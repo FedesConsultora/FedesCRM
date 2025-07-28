@@ -1,18 +1,22 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+// src/index.js
+import dotenv from 'dotenv';
+dotenv.config();
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-
-// Test route
-app.get('/health', (req, res) => {
-  res.json({ status: 'API up' });
-});
+import app from './app.js';
+import db from './config/db.js';
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`🚀 FedesCRM backend corriendo en el puerto ${PORT}`);
-});
+
+(async () => {
+  try {
+    await db.connect();
+    console.log('✅ Conexión a la base de datos establecida');
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('❌ Error al conectar con la base de datos:', err);
+    process.exit(1);
+  }
+})();
