@@ -23,7 +23,7 @@ services:
     volumes:
       - ./backend:/usr/src/app
       - /usr/src/app/node_modules
-    command: npm run dev
+    command: nodemon src/index.js
 
   frontend:
     build: ./frontend
@@ -38,6 +38,7 @@ services:
     tty: true
     depends_on:
       - backend
+    command: npm start
 
   adminer:
     image: adminer

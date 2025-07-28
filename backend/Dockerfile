@@ -5,9 +5,9 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 RUN npm install
 
-COPY . .
-
-# Instala nodemon global por si hace falta fuera del npm script
+# Instalamos nodemon globalmente para el entorno dev
 RUN npm install -g nodemon
+
+COPY . .
 
 CMD ["npm", "run", "dev"]
