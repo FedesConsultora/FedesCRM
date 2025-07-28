@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import app from './app.js';
-import db from './config/db.js';
+import db from './src/config/db.js';
 
 const PORT = process.env.PORT || 4000;
 
@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
       console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
     });
-    
+
   } catch (err) {
     console.error('❌ Error al conectar con la base de datos:', err);
     process.exit(1);
