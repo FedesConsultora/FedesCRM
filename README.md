@@ -113,15 +113,40 @@ Servicios:
 - `/README.md`: este archivo 😉
 
 ---
+---
 
-## 🛠️ Próximos pasos
+## 🔀 Flujo de trabajo con Git
 
-- [ ] Implementación módulo Core completo
-- [ ] Integraciones Meta webhook test
-- [ ] UI Inbox + Mensajería en vivo
-- [ ] Panel de propiedades
-- [ ] Automatizaciones
-- [ ] Dashboard KPIs
+Durante la etapa inicial de desarrollo (monousuario), se utilizará un esquema de ramas simple y efectivo:
+
+### 🧱 Ramas base
+
+- `main`: rama **estable y deployable** (solo recibe código probado y funcional).
+- `dev`: rama de desarrollo principal. Aquí se agregan y prueban nuevas funcionalidades.
+
+> ⚠️ Mientras el proyecto esté siendo desarrollado por una sola persona, **todo el desarrollo ocurrirá en `dev`**.  
+> Luego, se integrará a `main` cuando se alcance una funcionalidad completa y estable.
+
+### 🧩 A futuro: trabajo colaborativo
+
+Cuando se sumen otros desarrolladores, se utilizará el siguiente esquema:
+
+- `feature/<nombre>`: ramas para cada módulo o funcionalidad (ej. `feature/leads-module`).
+- Merge a `dev` cuando esté probado.
+- Merge de `dev` a `main` para releases.
+
+### 💡 Ejemplo
+
+```bash
+# Desarrollo diario
+git checkout dev
+
+# Al finalizar una feature puntual
+git checkout -b feature/core-auth
+# ... trabajar ...
+git checkout dev
+git merge feature/core-auth
+
 
 ---
 
