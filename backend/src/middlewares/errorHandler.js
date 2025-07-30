@@ -2,11 +2,10 @@
 import ApiError from '../utils/ApiError.js';
 
 const errorHandler = (err, req, res, _next) => {
-  let statusCode = err.statusCode || 500;
-  let message = err.message || 'Error interno del servidor';
-  let code = err.code || 'ERROR_INTERNO';
+  const statusCode = err.statusCode || 500;
+  const message = err.message || 'Error interno del servidor';
+  const code = err.code || 'ERROR_INTERNO';
 
-  // Si el error no es controlado
   if (!(err instanceof ApiError)) {
     console.error('❌ Error no manejado:', err);
   }
@@ -14,7 +13,8 @@ const errorHandler = (err, req, res, _next) => {
   res.status(statusCode).json({
     success: false,
     message,
-    code
+    code,
+    details: err.details || undefined  
   });
 };
 

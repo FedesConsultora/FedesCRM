@@ -1,5 +1,3 @@
-// src/seeders/20250728204300-seed-roles-permisos.cjs
-
 'use strict';
 
 /** @type {import('sequelize-cli').Seeder} */
@@ -11,7 +9,7 @@ async function up(queryInterface) {
   const permId = (name) => permisos.find(p => p.nombre === name)?.id;
   const now    = new Date();
 
-  // Admin tiene todos los permisos
+  // Admin → todos los permisos
   const allPerms = permisos.map(p => ({
     rol_id     : roleId('admin'),
     permiso_id : p.id,
@@ -20,12 +18,11 @@ async function up(queryInterface) {
 
   // Gerente
   const gerentePerms = [
-    'dashboard.ver','leads.*','propiedades.*','mensajes.ver','agenda.*'
+    'dashboard.ver','leads.*','propiedades.*','mensajes.ver','agenda.*',
+    'reportes.exportar','usuarios.ver','audit-logs.ver'
   ].flatMap(mask =>
     mask.endsWith('*')
-      ? permisos
-          .filter(p => p.nombre.startsWith(mask.replace('.*', '')))
-          .map(p => p.id)
+      ? permisos.filter(p => p.nombre.startsWith(mask.replace('.*', ''))).map(p => p.id)
       : [permId(mask)]
   ).map(pid => ({
     rol_id     : roleId('gerente'),
@@ -50,12 +47,11 @@ async function up(queryInterface) {
     'dashboard.ver',
     'automatizaciones.*',
     'mensajes.ver','mensajes.enviar',
-    'leads.ver','propiedades.ver'
+    'leads.ver','propiedades.ver',
+    'reportes.exportar'
   ].flatMap(mask =>
     mask.endsWith('*')
-      ? permisos
-          .filter(p => p.nombre.startsWith(mask.replace('.*', '')))
-          .map(p => p.id)
+      ? permisos.filter(p => p.nombre.startsWith(mask.replace('.*', ''))).map(p => p.id)
       : [permId(mask)]
   ).map(pid => ({
     rol_id     : roleId('marketing'),
@@ -63,11 +59,21 @@ async function up(queryInterface) {
     asignado_en: now
   }));
 
+  // Soporte
+  const soportePerms = [
+    'audit-logs.ver','canales.gestionar','settings.gestionar'
+  ].map(name => ({
+    rol_id     : roleId('soporte'),
+    permiso_id : permId(name),
+    asignado_en: now
+  }));
+
   await queryInterface.bulkInsert('roles_permisos', [
     ...allPerms,
     ...gerentePerms,
     ...agentePerms,
-    ...marketingPerms
+    ...marketingPerms,
+    ...soportePerms
   ]);
 }
 

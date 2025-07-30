@@ -1,44 +1,33 @@
-// src/migrations/20250728201000-create-email-verification-tokens.cjs
-
-'use strict';
-
-export async function up(queryInterface, Sequelize) {
-  await queryInterface.createTable('email_verification_tokens', {
+// src/modules/core/models/emailVerificationToken.js
+export default (sequelize, DataTypes) => {
+  const EmailVerificationToken = sequelize.define('EmailVerificationToken', {
     id: {
-      type        : Sequelize.UUID,
-      defaultValue: Sequelize.literal('gen_random_uuid()'),
-      primaryKey  : true
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
     },
-    usuario_id: {
-      type     : Sequelize.UUID,
+    usuarioId: {
+      type: DataTypes.UUID,
       allowNull: false,
-      references: {
-        model: 'usuarios',
-        key  : 'id'
-      },
-      onDelete: 'CASCADE'
+      field: 'usuario_id' // 👈 Mapea correctamente con snake_case de la DB
     },
     token: {
-      type     : Sequelize.STRING,
+      type: DataTypes.STRING,
       allowNull: false,
-      unique   : true
+      unique: true
     },
     expiracion: {
-      type     : Sequelize.DATE,
+      type: DataTypes.DATE,
       allowNull: false
     },
     usado: {
-      type        : Sequelize.BOOLEAN,
+      type: DataTypes.BOOLEAN,
       defaultValue: false
-    },
-    created_at: {
-      type        : Sequelize.DATE,
-      defaultValue: Sequelize.NOW
-    },
-    updated_at: Sequelize.DATE
+    }
+  }, {
+    tableName: 'email_verification_tokens',
+    timestamps: true // createdAt / updatedAt
   });
-}
 
-export async function down(queryInterface) {
-  await queryInterface.dropTable('email_verification_tokens');
-}
+  return EmailVerificationToken;
+};

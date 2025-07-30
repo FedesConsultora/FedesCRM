@@ -5,63 +5,88 @@ import jwt from 'jsonwebtoken';
 export default (sequelize, DataTypes) => {
   const Usuario = sequelize.define('Usuario', {
     nombre: {
-      type     : DataTypes.STRING,
+      type: DataTypes.STRING,
       allowNull: false
     },
     apellido: {
-      type     : DataTypes.STRING,
+      type: DataTypes.STRING,
       allowNull: false
     },
     email: {
-      type     : DataTypes.STRING,
+      type: DataTypes.STRING,
       allowNull: false,
-      unique   : true,
-      validate : { isEmail: true }
+      unique: true,
+      validate: { isEmail: true }
     },
     password: {
-      type     : DataTypes.STRING,
-      allowNull: true // puede ser null si se usa login social
+      type: DataTypes.STRING,
+      allowNull: true
     },
     telefono: DataTypes.STRING,
     activo: {
-      type        : DataTypes.BOOLEAN,
+      type: DataTypes.BOOLEAN,
       defaultValue: false
     },
     fechaAlta: {
-      type        : DataTypes.DATE,
-      defaultValue: DataTypes.NOW
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+      field: 'fecha_alta'
     },
     intentosFallidos: {
-      type        : DataTypes.INTEGER,
-      defaultValue: 0
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      field: 'intentos_fallidos'
     },
-    bloqueadoHasta: DataTypes.DATE,
-    ultimoLogin: DataTypes.DATE,
-    passwordChangedAt: DataTypes.DATE,
+    bloqueadoHasta: {
+      type: DataTypes.DATE,
+      field: 'bloqueado_hasta'
+    },
+    ultimoLogin: {
+      type: DataTypes.DATE,
+      field: 'ultimo_login'
+    },
+    passwordChangedAt: {
+      type: DataTypes.DATE,
+      field: 'password_changed_at'
+    },
     twoFactorEnabled: {
-      type        : DataTypes.BOOLEAN,
-      defaultValue: false
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: 'two_factor_enabled'
     },
     twoFactorSecret: {
-      type     : DataTypes.STRING,
-      allowNull: true
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'two_factor_secret'
     },
     avatarUrl: {
-      type     : DataTypes.STRING,
-      allowNull: true
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'avatar_url'
     },
     proveedor: {
-      type     : DataTypes.STRING,
+      type: DataTypes.STRING,
       allowNull: true
     },
     oauthId: {
-      type     : DataTypes.STRING,
-      allowNull: true
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'oauth_id'
+    },
+    organizacionId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'organizacion_id'
+    },
+    rolId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'rol_id'
     }
   }, {
-    tableName    : 'usuarios',
-    paranoid     : true,
-    defaultScope : { attributes: { exclude: ['password'] } },
+    tableName: 'usuarios',
+    paranoid: true,
+    defaultScope: { attributes: { exclude: ['password'] } },
     hooks: {
       beforeCreate: async (u) => {
         if (u.password) u.password = await bcrypt.hash(u.password, 10);
@@ -83,7 +108,6 @@ export default (sequelize, DataTypes) => {
       expiresIn: '12h'
     });
   };
-
 
   return Usuario;
 };

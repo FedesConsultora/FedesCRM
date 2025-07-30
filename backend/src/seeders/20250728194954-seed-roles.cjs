@@ -1,5 +1,3 @@
-// src/seeders/20250728204100-seed-roles.cjs
-
 'use strict';
 
 const crypto = require('crypto');
@@ -30,13 +28,19 @@ async function up(queryInterface) {
       nombre     : 'marketing',
       descripcion: 'Mkt & Automatización',
       created_at : new Date()
+    },
+    {
+      id         : crypto.randomUUID(),
+      nombre     : 'soporte',
+      descripcion: 'Soporte técnico',
+      created_at : new Date()
     }
   ]);
 }
 
 async function down(queryInterface) {
   await queryInterface.bulkDelete('roles', {
-    nombre: ['admin', 'gerente', 'agente', 'marketing']
+    nombre: ['admin', 'gerente', 'agente', 'marketing', 'soporte']
   });
 }
 

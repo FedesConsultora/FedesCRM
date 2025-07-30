@@ -2,7 +2,7 @@
 import express from 'express';
 
 // Import de rutas por módulo
-import coreRoutes from '../modules/core/routes/routes.js';
+import coreRoutes from '../modules/core/routes/index.js';
 import leadsRoutes from '../modules/leads/routes/routes.js';
 import propertiesRoutes from '../modules/properties/routes/routes.js';
 import messagingRoutes from '../modules/messaging/routes/routes.js';

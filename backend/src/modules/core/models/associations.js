@@ -1,3 +1,4 @@
+// src/modules/core/models/associations.js
 export const applyCoreAssociations = (models) => {
   const {
     Usuario,
@@ -12,72 +13,72 @@ export const applyCoreAssociations = (models) => {
 
   // ─────── ORGANIZACIÓN ───────
   Organizacion.hasMany(Usuario, {
-    foreignKey: 'organizacionId',
-    onDelete  : 'CASCADE'
+    foreignKey: { name: 'organizacionId', field: 'organizacion_id' },
+    onDelete: 'CASCADE'
   });
 
   Usuario.belongsTo(Organizacion, {
-    foreignKey: 'organizacionId',
-    onDelete  : 'CASCADE'
+    foreignKey: { name: 'organizacionId', field: 'organizacion_id' },
+    onDelete: 'CASCADE'
   });
 
   // ─────── ROL Y PERMISO ───────
   Rol.hasMany(Usuario, {
-    foreignKey: 'rolId',
-    as        : 'usuarios'
+    foreignKey: { name: 'rolId', field: 'rol_id' },
+    as: 'usuarios'
   });
 
   Usuario.belongsTo(Rol, {
-    foreignKey: 'rolId',
-    as        : 'rol'
+    foreignKey: { name: 'rolId', field: 'rol_id' },
+    as: 'rol'
   });
 
   Rol.belongsToMany(Permiso, {
-    through   : RolPermiso,
-    foreignKey: 'rolId',
-    otherKey  : 'permisoId',
-    onDelete  : 'CASCADE',
-    uniqueKey : 'rol_permiso_unique'
+    through: RolPermiso,
+    foreignKey: { name: 'rolId', field: 'rol_id' },
+    otherKey: { name: 'permisoId', field: 'permiso_id' },
+    onDelete: 'CASCADE',
+    uniqueKey: 'rol_permiso_unique'
   });
 
   Permiso.belongsToMany(Rol, {
-    through   : RolPermiso,
-    foreignKey: 'permisoId',
-    otherKey  : 'rolId',
-    onDelete  : 'CASCADE',
-    uniqueKey : 'rol_permiso_unique'
+    through: RolPermiso,
+    foreignKey: { name: 'permisoId', field: 'permiso_id' },
+    otherKey: { name: 'rolId', field: 'rol_id' },
+    onDelete: 'CASCADE',
+    uniqueKey: 'rol_permiso_unique'
   });
 
   // ─────── EMAIL VERIFICATION ───────
   Usuario.hasMany(EmailVerificationToken, {
-    foreignKey: 'usuarioId',
-    onDelete  : 'CASCADE'
+    foreignKey: { name: 'usuarioId', field: 'usuario_id' },
+    onDelete: 'CASCADE'
   });
 
   EmailVerificationToken.belongsTo(Usuario, {
-    foreignKey: 'usuarioId',
-    onDelete  : 'CASCADE'
+    foreignKey: { name: 'usuarioId', field: 'usuario_id' },
+    onDelete: 'CASCADE'
   });
 
   // ─────── PASSWORD RESET ───────
   Usuario.hasMany(PasswordResetToken, {
-    foreignKey: 'usuarioId',
-    onDelete  : 'CASCADE'
+    foreignKey: { name: 'usuarioId', field: 'usuario_id' },
+    onDelete: 'CASCADE'
   });
 
   PasswordResetToken.belongsTo(Usuario, {
-    foreignKey: 'usuarioId',
-    onDelete  : 'CASCADE'
+    foreignKey: { name: 'usuarioId', field: 'usuario_id' },
+    onDelete: 'CASCADE'
   });
 
   // ─────── AUDITORÍA ───────
   Usuario.hasMany(AuditLog, {
-    foreignKey: 'usuarioId',
-    onDelete  : 'CASCADE'
+    foreignKey: { name: 'usuarioId', field: 'usuario_id' },
+    onDelete: 'CASCADE'
   });
 
   AuditLog.belongsTo(Usuario, {
-    foreignKey: 'usuarioId',
-    onDelete  : 'CASCADE'
+    foreignKey: { name: 'usuarioId', field: 'usuario_id' },
+    onDelete: 'CASCADE'
   });
 };

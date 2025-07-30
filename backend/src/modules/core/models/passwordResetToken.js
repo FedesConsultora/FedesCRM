@@ -8,8 +8,9 @@ export default (sequelize, DataTypes) => {
       primaryKey  : true
     },
     usuarioId: {
-      type     : DataTypes.UUID,
-      allowNull: false
+      type: DataTypes.UUID,
+      allowNull: false,
+      field: 'usuario_id'
     },
     token: {
       type     : DataTypes.STRING,
