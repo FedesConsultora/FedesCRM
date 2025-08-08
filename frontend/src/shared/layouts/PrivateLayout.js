@@ -1,10 +1,11 @@
+// src/shared/layouts/PrivateLayout.jsx
 import { Link, Outlet } from 'react-router-dom';
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthProvider';
 import Loading from '../components/Loading';
 
 export default function PrivateLayout({ children }) {
-  const { user, logout, loading } = useContext(AuthContext);
+  const { user, logout, loading, organizations, activeOrgId, changeOrg } = useContext(AuthContext);
 
   return (
     <div className="private-layout">
@@ -32,9 +33,22 @@ export default function PrivateLayout({ children }) {
         {/* Header */}
         <header className="header">
           <div className="header-left">
-            <h1>Bienvenido, {user?.nombre || 'Usuario'}</h1>
+            <h1>Bienvenido, {user?.name || user?.nombre || 'Usuario'}</h1>
           </div>
-          <div className="header-right">
+
+          <div className="header-right" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            {organizations?.length > 1 && (
+              <select
+                value={activeOrgId || ''}
+                onChange={(e) => changeOrg(e.target.value)}
+                className="org-switch-select"
+                title="Cambiar organización"
+              >
+                {organizations.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name || o.nombre}</option>
+                ))}
+              </select>
+            )}
             <button onClick={logout} className="logout-btn">Cerrar sesión</button>
           </div>
         </header>
