@@ -1,213 +1,192 @@
-# 🔑 README – Autenticación y Gestión de Sesiones en FedesCRM
+# 🔑 Autenticación y Gestión de Sesiones – FedesCRM (Multi-Organización)
 
-Este documento explica el flujo completo de autenticación en **FedesCRM**, incluyendo:
+Este documento describe el flujo de autenticación y manejo de membresías en **FedesCRM**, que ahora soporta:
 
-- Registro de usuarios
-- Login con email y contraseña
-- Login con Google OAuth
-- Verificación de correo electrónico
+- **Usuarios en múltiples organizaciones**
+- Roles y permisos **por organización**
+- Invitaciones para unirse a organizaciones
+- Solicitudes de unión pendientes de aprobación
+- Registro de organizaciones nuevas
+- Login con Email o Google OAuth
+- **2FA opcional**
 - Recuperación y reseteo de contraseña
-- Middleware de autenticación y autorización
+- Tokens temporales (`pendingToken`, `inviteToken`)
 
 ---
 
 ## ⚙️ Tecnologías usadas
 
-- **JWT (JSON Web Token)** para sesiones sin estado
-- **Bcrypt** para encriptación de contraseñas
-- **Google OAuth** para login social
-- **Email Verification & Password Reset** mediante tokens temporales
+- **JWT**: sesiones sin estado (contiene `orgId` y `roleId` en el payload)
+- **Bcrypt**: encriptación de contraseñas
+- **Google OAuth**: login social
+- **Tokens temporales**: para verificación de email, reset de contraseña e invitaciones
+- **Pending Token**: para continuar el registro antes de activar cuenta
+- **Nodemailer + Handlebars**: envío de emails con plantillas HTML
 
 ---
 
-## 🧱 Flujo de Autenticación
+## 🧱 Flujo de Autenticación y Membresías
 
-### 1️⃣ Registro
+### 1️⃣ Registro – Paso 1
 
-**Ruta**: `POST /auth/register`
+**Ruta**: `POST /core/auth/register`
 
 **Flujo**:
 
-1. El usuario envía `nombre, apellido, email, password, organizacionId`.
+1. El usuario envía `nombre, apellido, email, password`.
 2. Se crea un usuario **inactivo** (`activo = false`).
-3. Se genera un `EmailVerificationToken` válido por 24h.
-4. Se envía un correo con el link de verificación.
+3. El backend devuelve un **`pendingToken`** válido por 1 hora.
+4. El frontend usará este token para crear o unirse a una organización.
 
-**Respuesta**:
+**Ejemplo de respuesta**:
 
 ```json
 {
   "success": true,
-  "message": "Usuario registrado. Revisa tu email para verificar tu cuenta."
+  "message": "Usuario registrado. Continúa con los datos de la empresa o únete a una existente.",
+  "pendingToken": "JWT_TEMPORAL"
 }
 ```
 
 ---
 
-### 2️⃣ Verificación de Email
+### 2️⃣ Registro – Paso 2 (Crear Organización)
 
-**Ruta**: `POST /auth/verify-email`
+**Ruta**: `POST /core/auth/register-org`  
+**Protección**: `pendingTokenMiddleware`
+
+- El usuario crea una nueva organización y se asigna como **admin**.
+- Se genera un token de verificación de email (`EmailVerificationToken`).
+- Se envía correo con enlace de verificación.
+
+---
+
+### 3️⃣ Registro – Paso 2 (Unirse a una Organización)
+
+#### Opción 1 – Por invitación
+
+**Ruta**:  
+
+- `POST /core/auth/join-org` → con `pendingToken`  
+- `POST /core/auth/join-org-auth` → con `authMiddleware` (usuario activo)
+
+**Flujo**:
+
+- El `inviteToken` se valida.
+- Se crea la membresía en `estado = 'activo'`.
+- Se envía email de verificación si el usuario aún no está activo.
+
+#### Opción 2 – Por solicitud directa
+
+**Ruta**: `POST /core/orgs/:orgId/join-request`  
+**Protección**: `authMiddleware`
+
+**Flujo**:
+
+- Crea una membresía con `estado = 'pendiente'`.
+- Notifica a los administradores para que aprueben o rechacen.
+
+---
+
+### 4️⃣ Verificación de Email
+
+**Ruta**: `POST /core/auth/verify-email`
 
 - Recibe `{ token }`.
-- Si el token es válido y no está expirado:
-  - Activa la cuenta (`activo = true`).
-  - Marca el token como `usado = true`.
-
-**Respuesta**:
-
-```json
-{
-  "success": true,
-  "message": "Email verificado correctamente"
-}
-```
+- Activa el usuario (`activo = true`) y marca el token como usado.
+- Envía email de bienvenida.
 
 ---
 
-### 3️⃣ Login con Email y Contraseña
+### 5️⃣ Login
 
-**Ruta**: `POST /auth/login`
+**Ruta**: `POST /core/auth/login`
 
 **Flujo**:
 
-1. Se valida el usuario y contraseña (con `bcrypt.compare`).
-2. Si está activo, se genera un **JWT** válido por 12h.
-3. Se retorna el token y la información del usuario, incluyendo su rol y permisos.
-
-**Respuesta**:
-
-```json
-{
-  "success": true,
-  "token": "JWT_TOKEN",
-  "user": {
-    "id": "uuid",
-    "email": "admin@fedes.ai",
-    "rol": "admin",
-    "permisos": ["usuarios.ver", "roles.ver", "leads.ver"]
-  }
-}
-```
+- Si el usuario está en **una sola organización**, entra directo.
+- Si pertenece a **varias**, devuelve una lista para elegir.
+- Los `superadmin_global` no necesitan `orgId` en el JWT.
 
 ---
 
-### 4️⃣ Login con Google OAuth
+### 6️⃣ Cambio de Organización
 
-**Ruta**: `POST /auth/google`
+**Ruta**: `POST /core/auth/switch-org`
+
+- Devuelve un nuevo JWT con el `orgId` y los permisos correspondientes.
+
+---
+
+### 7️⃣ Google OAuth
+
+**Ruta**: `POST /core/auth/google`
 
 **Flujo**:
 
-1. El frontend obtiene un `credential` desde `@react-oauth/google`.
-2. Envía al backend `googleId, email, nombre, apellido`.
-3. Si no existe el usuario, se crea uno con `proveedor = 'google'` y `activo = true`.
-4. Devuelve un JWT igual que el login normal.
-
-> 🔹 **Frontend** usa `<GoogleOAuthProvider>` para obtener la credencial y luego hace un `POST` al backend.
+- Si el usuario existe, inicia sesión.
+- Si no existe:
+  - Crea la cuenta.
+  - Si no tiene membresías, devuelve `pendingToken` para completar alta.
 
 ---
 
-### 5️⃣ Olvidé mi contraseña
+### 8️⃣ 2FA (Autenticación en Dos Pasos)
 
-**Ruta**: `POST /auth/forgot-password`
-
-**Flujo**:
-
-1. El usuario envía su `email`.
-2. Se crea un `PasswordResetToken` válido por 1h.
-3. Se envía un correo con el link para resetear la contraseña.
-
-**Respuesta**:
-
-```json
-{
-  "success": true,
-  "message": "Se envió el enlace para recuperar la contraseña"
-}
-```
+- **Setup**: `POST /core/auth/2fa/setup`
+- **Verificar código**: `POST /core/auth/2fa/verify`
+- **Desactivar**: `POST /core/auth/2fa/disable`
+- **Login con 2FA**: `POST /core/auth/2fa`
 
 ---
 
-### 6️⃣ Resetear Contraseña
+### 9️⃣ Recuperación de Contraseña
 
-**Ruta**: `POST /auth/reset-password`
-
-**Flujo**:
-
-1. Recibe `{ token, newPassword }`.
-2. Verifica el `PasswordResetToken` (no usado y vigente).
-3. Cambia la contraseña del usuario y marca el token como `usado = true`.
-
-**Respuesta**:
-
-```json
-{
-  "success": true,
-  "message": "Contraseña actualizada correctamente"
-}
-```
+- **Olvidé mi contraseña**: `POST /core/auth/forgot-password`
+- **Resetear contraseña**: `POST /core/auth/reset-password`
 
 ---
 
-## 🧩 Middleware de Autenticación
+## 🔐 Middlewares Clave
 
-Ubicación: `src/middlewares/authMiddleware.js`
+- **`authMiddleware`**:  
+  Valida JWT y carga el usuario con permisos de la organización activa.
 
-```js
-import jwt from 'jsonwebtoken';
-import ApiError from '../utils/ApiError.js';
-import { Usuario, Rol, Permiso } from '../modules/core/models/index.js';
+- **`pendingTokenMiddleware`**:  
+  Permite continuar el registro con `pendingToken` (sin JWT normal).
 
-export const authMiddleware = async (req, _res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      throw new ApiError(401, 'No se encontró el token', 'AUTH_NO_TOKEN');
-    }
+- **`requirePermiso('permiso')`**:  
+  Valida que el rol activo tenga el permiso requerido.
 
-    const token = authHeader.split(' ')[1];
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-
-    const user = await Usuario.findByPk(payload.id, {
-      include: { model: Rol, as: 'rol', include: { model: Permiso } }
-    });
-
-    if (!user) throw new ApiError(401, 'Usuario no encontrado', 'AUTH_USER_NOT_FOUND');
-
-    req.user = {
-      id: user.id,
-      email: user.email,
-      rol: user.rol?.nombre,
-      permisos: user.rol?.Permisos?.map(p => p.nombre) || []
-    };
-
-    next();
-  } catch (err) {
-    next(new ApiError(401, 'Token inválido o expirado', 'AUTH_INVALID_TOKEN'));
-  }
-};
-```
+- **`ensureOrgParam`**:  
+  Asegura que el `:orgId` de la ruta pertenece al usuario autenticado.
 
 ---
 
-## 🔐 Uso en Rutas Protegidas
+## 📌 Ejemplo de Uso en Rutas Protegidas
 
 ```js
 import { authMiddleware } from '../../middlewares/authMiddleware.js';
 import { requirePermiso } from '../../middlewares/permisoMiddleware.js';
 
-router.get('/usuarios', authMiddleware, requirePermiso('usuarios.ver'), listarUsuarios);
-router.post('/usuarios', authMiddleware, requirePermiso('usuarios.crear'), crearUsuario);
+router.get(
+  '/orgs/:orgId/members',
+  authMiddleware,
+  requirePermiso('usuarios.ver'),
+  controller.listarMiembros
+);
 ```
 
 ---
 
 ## 🎯 Consejos de Seguridad
 
-1. Usar `HTTPS` en producción para proteger el JWT.
-2. Almacenar el JWT en **Memory** o **Secure HttpOnly Cookie**.
-3. Rotar tokens y manejar expiración (`expiresIn`) correctamente.
-4. Invalidar tokens si se cambia la contraseña (`passwordChangedAt`).
+1. Usar **HTTPS** en producción.
+2. Guardar JWT en **Secure HttpOnly Cookies** o en memoria, nunca en localStorage.
+3. Rotar y expirar tokens regularmente.
+4. Invalidar tokens cuando se cambie contraseña o email.
+5. Limitar intentos de login y aplicar bloqueo temporal.
 
 ---
 
-> 🧠 Con este flujo, FedesCRM soporta registro con email, autenticación con Google, verificación de correo, recuperación de contraseña y control de permisos basado en roles.
+> Con este flujo, FedesCRM soporta registro con email o Google, multi-organización, invitaciones, solicitudes de unión, verificación de correo, 2FA, recuperación de contraseña y control de permisos basado en roles.

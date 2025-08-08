@@ -1,17 +1,21 @@
-# 🔐 README – Manejo de Permisos y Roles en FedesCRM
+# 🔐 README – Manejo de Permisos y Roles en FedesCRM (Multi-Organización)
 
-Este documento explica cómo gestionar y aplicar permisos por rol en **FedesCRM**, incluyendo cómo proteger rutas en el backend y cómo consumir esta información desde el frontend.
+Este documento explica cómo gestionar y aplicar permisos por rol en **FedesCRM**, teniendo en cuenta que ahora el sistema soporta **multi-organización**.
 
 ---
 
-## 🎭 ¿Cómo funciona el sistema de roles y permisos?
+## 🎭 Conceptos clave
 
-Cada usuario tiene un `rolId` que determina su nivel de acceso.  
-Cada `Rol` tiene múltiples `Permisos` relacionados mediante la tabla intermedia `roles_permisos`.
+En el modelo actual:
 
-- **roles** → Admin, Gerente, Agente, Marketing
-- **permisos** → Acciones atómicas como `usuarios.ver`, `leads.crear`, `agenda.editar`
-- **roles_permisos** → Define qué permisos tiene cada rol
+- Un usuario **puede pertenecer a varias organizaciones** mediante la tabla `organization_user`.
+- Cada **membresía** en una organización tiene un `rolId` (puede ser distinto en cada organización).
+- Los **roles** pueden ser:
+  - **Globales** → `organizacion_id = NULL` (ej. `superadmin_global`).
+  - **Por organización** → `organizacion_id` con el ID de la organización a la que pertenecen.
+- Los **permisos** (`permisos`) se asignan a roles mediante la tabla intermedia `roles_permisos`.
+
+Esto permite que un usuario tenga distintos niveles de acceso en cada organización en la que participa.
 
 ---
 
@@ -21,26 +25,46 @@ Cada `Rol` tiene múltiples `Permisos` relacionados mediante la tabla intermedia
 
 ```json
 [
-  { "id": "uuid1", "nombre": "admin", "descripcion": "Súper Administrador" },
-  { "id": "uuid2", "nombre": "gerente", "descripcion": "Gerente Comercial" },
-  { "id": "uuid3", "nombre": "agente", "descripcion": "Agente Inmobiliario" },
-  { "id": "uuid4", "nombre": "marketing", "descripcion": "Mkt & Automatización" }
+  { "id": "uuid1", "nombre": "admin", "descripcion": "Administrador de organización", "organizacion_id": "uuid-org" },
+  { "id": "uuid2", "nombre": "gerente", "descripcion": "Gerente Comercial", "organizacion_id": "uuid-org" },
+  { "id": "uuid3", "nombre": "superadmin_global", "descripcion": "Super Administrador Global", "organizacion_id": null }
 ]
 ```
 
 ### 📌 Tabla `permisos`
 
-Ejemplo de estructura:
-
 ```json
-{ "nombre": "leads.crear", "descripcion": "LEADS - CREAR" }
+{ "nombre": "usuarios.ver", "descripcion": "USUARIOS - VER" }
 ```
 
-### 📌 Tabla intermedia `roles_permisos`
+### 📌 Tabla `roles_permisos`
 
 ```json
-{ "rol_id": "uuid1", "permiso_id": "uuidA", "asignado_en": "2025-07-28" }
+{ "rol_id": "uuid1", "permiso_id": "uuidA" }
 ```
+
+### 📌 Tabla `organization_user` (membresías)
+
+```json
+{
+  "id": "uuid-mem",
+  "organizacion_id": "uuid-org",
+  "usuario_id": "uuid-user",
+  "rol_id": "uuid1",
+  "estado": "activo"
+}
+```
+
+---
+
+## ⚙️ Flujo de carga de permisos
+
+1. Cuando un usuario inicia sesión, se determina la **organización activa** (`orgId` en el JWT).
+2. Se busca la membresía activa (`organization_user`) para esa organización.
+3. A partir del rol de esa membresía, se cargan todos sus permisos.
+4. Si el usuario es `superadmin_global`, puede acceder a rutas globales sin `orgId`.
+
+> 📌 Los permisos que llegan al frontend siempre dependen de la organización activa.
 
 ---
 
@@ -50,7 +74,6 @@ Ubicación: `/src/middlewares/permisoMiddleware.js`
 
 ```js
 import ApiError from '../utils/ApiError.js';
-import { Permiso, Rol } from '../modules/core/models/index.js';
 
 export const requirePermiso = (permiso) => async (req, _res, next) => {
   try {
@@ -65,43 +88,37 @@ export const requirePermiso = (permiso) => async (req, _res, next) => {
 };
 ```
 
-> 🔹 Se asume que `req.user` es seteado por `authMiddleware` y contiene `permisos`.
+> 🔹 Se asume que `req.user` es seteado por `authMiddleware` usando `buildUserPayload()`.
 
 ---
 
-## 🔐 Cómo usar en rutas
-
-Ejemplo en `/src/modules/core/routes/usuarioRoutes.js`:
+## 🔐 Ejemplo de uso en rutas
 
 ```js
 import { requirePermiso } from '../../../middlewares/permisoMiddleware.js';
 
 router.get('/', requirePermiso('usuarios.ver'), controller.listar);
 router.post('/', requirePermiso('usuarios.crear'), controller.crear);
-router.patch('/:id', requirePermiso('usuarios.editar'), controller.actualizar);
-router.delete('/:id', requirePermiso('usuarios.eliminar'), controller.eliminar);
 ```
 
 ---
 
 ## 📋 Permisos recomendados por módulo
 
-| Módulo           | Ejemplos de permisos                        |
-|------------------|---------------------------------------------|
-| Core             | dashboard.ver, settings.gestionar, audit-logs.ver |
-| Usuarios / Roles | usuarios.ver, usuarios.crear, roles.editar  |
-| Leads            | leads.ver, leads.crear, leads.editar        |
-| Propiedades      | propiedades.ver, propiedades.subir-foto     |
-| Mensajería       | mensajes.ver, mensajes.enviar, canales.gestionar |
-| Agenda           | agenda.ver, agenda.crear, agenda.sync       |
-| Automatizaciones | automatizaciones.ver, automatizaciones.ejecutar |
-| Reportes         | reportes.exportar                           |
+| Módulo           | Ejemplos de permisos                               |
+|------------------|----------------------------------------------------|
+| Core             | dashboard.ver, settings.gestionar, audit-logs.ver  |
+| Usuarios / Roles | usuarios.ver, usuarios.crear, roles.editar         |
+| Leads            | leads.ver, leads.crear, leads.editar               |
+| Propiedades      | propiedades.ver, propiedades.subir-foto            |
+| Mensajería       | mensajes.ver, mensajes.enviar, canales.gestionar   |
+| Agenda           | agenda.ver, agenda.crear, agenda.sync              |
+| Automatizaciones | automatizaciones.ver, automatizaciones.ejecutar    |
+| Reportes         | reportes.exportar                                  |
 
 ---
 
-## 🎯 Cómo llega al frontend
-
-Si un usuario no tiene permiso para una ruta:
+## 🎯 Respuesta de error si no hay permiso
 
 ```json
 {
@@ -111,37 +128,16 @@ Si un usuario no tiene permiso para una ruta:
 }
 ```
 
-El frontend debe usar `handleApiError` para mostrar un **toast** o **modal** según corresponda.
+---
 
-Además, al iniciar sesión, el backend envía:
+## 🛠 Buenas prácticas
 
-```json
-{
-  "id": "uuid-user",
-  "email": "admin@fedes.ai",
-  "rol": "admin",
-  "permisos": ["usuarios.ver", "roles.ver", "leads.*"]
-}
-```
-
-Esto permite ocultar botones o secciones en el frontend según permisos.
+- Usar nombres de permisos en formato `modulo.accion`.
+- Cargar permisos al iniciar sesión y condicionar la UI del frontend.
+- Mantener roles globales solo para administración central.
+- Revisar `roles_permisos` al modificar roles para no dejar permisos huérfanos.
+- Usar `superadmin_global` solo para mantenimiento y soporte.
 
 ---
 
-## 🧪 Debug
-
-1. Verificar `req.user` en el backend (populado por `authMiddleware`).
-2. Revisar la tabla `roles_permisos` para asegurarse de que el rol tiene el permiso requerido.
-3. Confirmar que el frontend recibe `permisos` en `/auth/me`.
-
----
-
-## 🛠 Sugerencias
-
-- Usar nombres de permiso `modulo.accion` simples y consistentes.
-- Cargar permisos al iniciar sesión para condicionar la UI.
-- Centralizar la verificación de permisos en el middleware `requirePermiso()`.
-
----
-
-> ⚡ Consejo: Mantené los permisos claros y segmentados para que roles como `marketing` o `agente` solo vean lo que necesitan.
+> ⚡ Con este modelo, FedesCRM permite un control granular de acceso por organización y también permisos globales para administración central.

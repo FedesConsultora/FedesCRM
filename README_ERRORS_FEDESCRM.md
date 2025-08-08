@@ -1,6 +1,6 @@
 # ❗️ReadMe – Manejo de Errores Globales en FedesCRM
 
-Este documento explica cómo manejar errores de forma consistente en **FedesCRM**, 
+Este documento explica cómo manejar errores de forma consistente en **FedesCRM**,
 tanto en el **backend** (creación y propagación de errores) como en el **frontend** (visualización en toasts, modales y formularios).
 
 ---
@@ -179,5 +179,20 @@ try {
 
 ---
 
-> ⚠️ **Tip**: Documentar los `code` más importantes en un archivo compartido 
+> ⚠️ **Tip**: Documentar los `code` más importantes en un archivo compartido
 para que backend y frontend tengan una referencia única.
+
+### 📍 Nuevos códigos de error en flujos multi-organización
+
+Con la implementación de multi-organización, invitaciones y solicitudes de unión, se agregaron nuevos códigos (`code`) que el frontend puede usar para mostrar mensajes específicos:
+
+| Código                     | Descripción                                                       | Ejemplo de uso en frontend |
+|----------------------------|-------------------------------------------------------------------|----------------------------|
+| `ORG_ACCESS_DENIED`        | El usuario no pertenece a la organización solicitada              | Mostrar modal o redirección a selección de organización |
+| `MEMBERSHIP_NOT_FOUND`     | No se encontró la solicitud o membresía                           | Mostrar toast de error y refrescar listado |
+| `MEMBERSHIP_NOT_PENDING`   | Se intentó aprobar/rechazar una solicitud que ya no está pendiente| Toast de advertencia       |
+| `INVITE_INVALID`           | Invitación inválida o expirada                                    | Modal informando al usuario y opción de pedir nueva invitación |
+| `REGISTER_TOKEN_MISSING`   | Falta el `pendingToken` en el flujo de registro o unión            | Redirigir a inicio de registro |
+| `NO_ORG_MEMBERSHIP`        | El usuario activo no tiene ninguna organización asignada          | Mostrar pantalla para crear o unirse a una organización |
+
+> 💡 **Tip:** Manejar estos códigos en `handleApiError` permite dar feedback inmediato y guiar al usuario al siguiente paso correcto.

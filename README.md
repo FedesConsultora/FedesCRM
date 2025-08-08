@@ -13,6 +13,8 @@ Reducir la dependencia de Excel y herramientas dispersas, logrando:
 - Panel de propiedades enlazado a cada lead
 - Automatizaciones de seguimiento y respuesta
 - Dashboard de rendimiento en tiempo real
+- **Gestión multi-organización** con control de acceso por roles y permisos
+- **Invitaciones y solicitudes de unión** a organizaciones con aprobación/rechazo por administradores
 
 ---
 
@@ -67,7 +69,7 @@ validators/
 
 | Módulo           | Descripción                                                                 |
 |------------------|-----------------------------------------------------------------------------|
-| 1. Core & Tenancy| Multi-tenancy (organizations, usuarios, roles, tokens, seguridad)          |
+| 1. Core & Tenancy| Multi-tenancy avanzado: organizaciones, usuarios, membresías, invitaciones, roles globales y por organización, control de permisos y seguridad |
 | 2. Leads         | Captura, asignación, seguimiento, historial y etiquetas                    |
 | 3. Propiedades   | Fichas de propiedades, fotos, documentos, features, relación con leads     |
 | 4. Mensajería    | Canales integrados (Meta), inbox, conversaciones, mensajes, adjuntos       |
@@ -100,7 +102,10 @@ Servicios:
 - Dashboard interactivo con KPIs: tasa de conversión, ROI, tiempo de respuesta
 - Gestión de propiedades con galería, documentos y geolocalización
 - Integración nativa con APIs de Meta
-- Seguridad por roles y auditoría de accesos
+- **Gestión multi-organización** con membresías y control de acceso granular
+- **Invitaciones y solicitudes de unión** a organizaciones con aprobación y rechazo
+- Seguridad por roles y permisos, tanto globales como por organización
+- Auditoría de accesos y cambios
 - Arquitectura modular y escalable (lista para microservicios)
 
 ---
@@ -112,7 +117,6 @@ Servicios:
 - `/Dockerfile` + `/docker-compose.yml`: entorno local completo
 - `/README.md`: este archivo 😉
 
----
 ---
 
 ## 🔀 Flujo de trabajo con Git
@@ -146,7 +150,7 @@ git checkout -b feature/core-auth
 # ... trabajar ...
 git checkout dev
 git merge feature/core-auth
-
+```
 
 ---
 
