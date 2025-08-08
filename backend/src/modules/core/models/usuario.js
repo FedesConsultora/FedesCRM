@@ -1,6 +1,4 @@
-// src/modules/core/models/usuario.js
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 
 export default (sequelize, DataTypes) => {
   const Usuario = sequelize.define('Usuario', {
@@ -25,41 +23,42 @@ export default (sequelize, DataTypes) => {
     telefono: DataTypes.STRING,
     activo: {
       type: DataTypes.BOOLEAN,
+      allowNull: false,
       defaultValue: false
     },
-    fechaAlta: {
+    fecha_alta: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
       field: 'fecha_alta'
     },
-    intentosFallidos: {
+    intentos_fallido: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
       field: 'intentos_fallidos'
     },
-    bloqueadoHasta: {
+    bloqueado_hasta: {
       type: DataTypes.DATE,
       field: 'bloqueado_hasta'
     },
-    ultimoLogin: {
+    ultimo_login: {
       type: DataTypes.DATE,
       field: 'ultimo_login'
     },
-    passwordChangedAt: {
+    password_changed_at: {
       type: DataTypes.DATE,
       field: 'password_changed_at'
     },
-    twoFactorEnabled: {
+    two_factor_enabled: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
       field: 'two_factor_enabled'
     },
-    twoFactorSecret: {
+    two_factor_secret: {
       type: DataTypes.STRING,
       allowNull: true,
       field: 'two_factor_secret'
     },
-    avatarUrl: {
+    avatar_url: {
       type: DataTypes.STRING,
       allowNull: true,
       field: 'avatar_url'
@@ -68,17 +67,17 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
-    oauthId: {
+    oauth_id: {
       type: DataTypes.STRING,
       allowNull: true,
       field: 'oauth_id'
     },
-    organizacionId: {
+    organizacion_id: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       field: 'organizacion_id'
     },
-    rolId: {
+    rol_id: {
       type: DataTypes.UUID,
       allowNull: true,
       field: 'rol_id'
@@ -86,6 +85,10 @@ export default (sequelize, DataTypes) => {
   }, {
     tableName: 'usuarios',
     paranoid: true,
+    timestamps: true, 
+    createdAt: 'created_at', 
+    updatedAt: 'updated_at',
+    deletedAt: 'deleted_at',
     defaultScope: { attributes: { exclude: ['password'] } },
     hooks: {
       beforeCreate: async (u) => {
@@ -98,7 +101,6 @@ export default (sequelize, DataTypes) => {
     }
   });
 
-  // Métodos de instancia
   Usuario.prototype.validarPassword = function (plain) {
     return bcrypt.compare(plain, this.password);
   };

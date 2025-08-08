@@ -1,4 +1,3 @@
-// src/modules/core/models/emailVerificationToken.js
 export default (sequelize, DataTypes) => {
   const EmailVerificationToken = sequelize.define('EmailVerificationToken', {
     id: {
@@ -9,7 +8,7 @@ export default (sequelize, DataTypes) => {
     usuarioId: {
       type: DataTypes.UUID,
       allowNull: false,
-      field: 'usuario_id' // 👈 Mapea correctamente con snake_case de la DB
+      field: 'usuario_id'
     },
     token: {
       type: DataTypes.STRING,
@@ -26,7 +25,10 @@ export default (sequelize, DataTypes) => {
     }
   }, {
     tableName: 'email_verification_tokens',
-    timestamps: true // createdAt / updatedAt
+    paranoid: false,
+    timestamps: true,
+    createdAt: 'created_at', 
+    updatedAt: 'updated_at'
   });
 
   return EmailVerificationToken;

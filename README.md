@@ -50,7 +50,7 @@ validators/
 
 ``` bash
 /modules/
-  /auth/
+  /core/
     components/
     pages/
     services/

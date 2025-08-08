@@ -1,70 +1,204 @@
-# Getting Started with Create React App
+# 🖥️ FedesCRM – Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Este documento describe la **arquitectura del frontend** de **FedesCRM**, sus dependencias, estructura de carpetas y convenciones para desarrollo.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## 📦 Stack Tecnológico
 
-### `npm start`
+- **React 19 (CRA)**: Librería principal para la UI
+- **React Router 7**: Enrutamiento cliente
+- **Axios**: Cliente HTTP con interceptores para JWT
+- **Sass**: Estilos modulares y variables globales
+- **@react-oauth/google**: Login con Google OAuth2
+- **React Icons**: Iconografía en componentes
+- **React Context API**: Gestión de sesión y permisos
+- **Lottie**: Animaciones ligeras
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## 📂 Estructura de Carpetas
 
-### `npm test`
+```bash
+/frontend
+├── public/               # Archivos estáticos
+├── src/
+│   ├── api/              # Llamadas a la API (Axios)
+│   │   ├── axios.js      # Configuración base Axios + interceptores
+│   │   └── core.js       # Endpoints de módulo Core (auth, usuarios, roles)
+│   │
+│   ├── modules/          # Módulos principales
+│   │   ├── core/         # Módulo Core (auth, roles, usuarios)
+│   │   │   ├── components/
+│   │   │   ├── pages/
+│   │   │   ├── services/
+│   │   │   └── routes.js
+│   │   ├── leads/
+│   │   ├── properties/
+│   │   ├── messaging/
+│   │   ├── agenda/
+│   │   └── automation/
+│   │
+│   ├── shared/
+│   │   ├── components/   # Botones, inputs, layouts, modales, etc.
+│   │   ├── context/      # AuthContext, ToastContext, ModalContext
+│   │   └── hooks/        # useAuth, useToast, useModal, etc.
+│   │
+│   ├── router/           # Configuración de rutas
+│   │   ├── index.js      # AppRouter principal (lazy load por módulo)
+│   │   ├── PrivateRoute.jsx
+│   │   └── PublicRoute.jsx
+│   │
+│   ├── styles/           # Variables globales, mixins, reset, etc.
+│   ├── utils/            # Funciones auxiliares (handleApiError, formatters)
+│   ├── App.js
+│   └── index.js
+│
+├── .env                  # Configuración (REACT_APP_API_URL, GOOGLE_CLIENT_ID)
+└── package.json
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+---
 
-### `npm run build`
+## 🔑 Contextos Globales
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### 1️⃣ **AuthContext**
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+- Maneja el JWT, usuario actual y permisos.
+- Guarda el token en `localStorage`.
+- Expone métodos: `login(userData)`, `logout()`, `hasPermiso(nombre)`.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### 2️⃣ **ToastContext**
 
-### `npm run eject`
+- Sistema de notificaciones globales.
+- Función `showToast(message, type)`.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### 3️⃣ **ModalContext**
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+- Manejo de modales globales.
+- Función `showModal({ title, message, onConfirm })`.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+---
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## 🌐 Comunicación con el Backend
 
-## Learn More
+### `src/api/axios.js`
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```js
+import axios from 'axios';
+import { handleApiError } from '../utils/handleApiError';
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:4000/api',
+  timeout: 10000
+});
 
-### Code Splitting
+// Interceptor JWT
+document.addEventListener('authTokenUpdated', () => {
+  const token = localStorage.getItem('token');
+  if (token) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+});
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    handleApiError(err);
+    return Promise.reject(err);
+  }
+);
 
-### Analyzing the Bundle Size
+export default api;
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+### `src/api/core.js`
 
-### Making a Progressive Web App
+```js
+import api from './axios';
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+// --- Auth ---
+export const login = (data) => api.post('/core/auth/login', data);
+export const register = (data) => api.post('/core/auth/register', data);
+export const googleLogin = (data) => api.post('/core/auth/google', data);
+export const forgotPassword = (data) => api.post('/core/auth/forgot-password', data);
+export const resetPassword = (data) => api.post('/core/auth/reset-password', data);
+export const verifyEmail = (data) => api.post('/core/auth/verify-email', data);
+export const me = () => api.get('/core/auth/me');
 
-### Advanced Configuration
+// --- Usuarios ---
+export const getUsuarios = () => api.get('/core/usuarios');
+export const getUsuario = (id) => api.get(`/core/usuarios/${id}`);
+export const createUsuario = (data) => api.post('/core/usuarios', data);
+export const updateUsuario = (id, data) => api.patch(`/core/usuarios/${id}`, data);
+export const deleteUsuario = (id) => api.delete(`/core/usuarios/${id}`);
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+// --- Roles ---
+export const getRoles = () => api.get('/core/roles');
+export const getRol = (id) => api.get(`/core/roles/${id}`);
+export const createRol = (data) => api.post('/core/roles', data);
+export const updateRol = (id, data) => api.patch(`/core/roles/${id}`, data);
+export const deleteRol = (id) => api.delete(`/core/roles/${id}`);
+export const assignPermiso = (rolId, permisoId) => api.post(`/core/roles/${rolId}/permisos`, { permisoId });
+export const removePermiso = (rolId, permisoId) => api.delete(`/core/roles/${rolId}/permisos/${permisoId}`);
 
-### Deployment
+// --- Permisos ---
+export const getPermisos = () => api.get('/core/permisos');
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+// --- Organizaciones ---
+export const getOrganizaciones = () => api.get('/core/organizaciones');
+export const getOrganizacion = (id) => api.get(`/core/organizaciones/${id}`);
+export const createOrganizacion = (data) => api.post('/core/organizaciones', data);
+export const updateOrganizacion = (id, data) => api.patch(`/core/organizaciones/${id}`, data);
+export const deleteOrganizacion = (id) => api.delete(`/core/organizaciones/${id}`);
+```
 
-### `npm run build` fails to minify
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## 🛡️ Rutas Públicas y Privadas
+
+- **PublicRoute**: impide que usuarios logueados accedan a `/login` o `/register`.
+- **PrivateRoute**: exige JWT válido y, opcionalmente, un permiso específico.
+
+```jsx
+<Route path="/login" element={<PublicRoute><LoginPage/></PublicRoute>} />
+<Route path="/dashboard" element={<PrivateRoute><DashboardPage/></PrivateRoute>} />
+<Route path="/usuarios" element={<PrivateRoute requiredPermiso="usuarios.ver"><UsuariosPage/></PrivateRoute>} />
+```
+
+---
+
+## 📄 Utils Importantes
+
+- **`handleApiError.js`**: Centraliza manejo de errores y muestra toasts o modales.
+- **`formatDate.js`**: Formatea fechas en español.
+- **`useQueryParams.js`**: Hook para manejar parámetros de URL.
+
+---
+
+## 🧪 Flujo de Autenticación
+
+1. Usuario envía credenciales vía `login()` o `googleLogin()`.
+2. Backend responde con JWT y datos del usuario + permisos.
+3. `AuthContext` guarda token y usuario.
+4. Axios envía automáticamente JWT en cada request.
+5. `PrivateRoute` valida sesión y permisos antes de renderizar.
+
+---
+
+## 📧 Google Login
+
+- Configurar `REACT_APP_GOOGLE_CLIENT_ID` en `.env`
+- Usar `<GoogleOAuthProvider>` en `index.js`
+- Consumir `googleLogin` en el backend tras obtener `idToken`.
+
+---
+
+## 📝 Convenciones
+
+- Variables de estado: `camelCase`
+- Componentes: `PascalCase`
+- Archivos SCSS: `kebab-case`
+- Rutas y permisos: `snake_case` para backend, `camelCase` para frontend.
+
+---
+
+> _"Menos Excel. Más conversión. Datos en tiempo real."_ – **FedesCRM**

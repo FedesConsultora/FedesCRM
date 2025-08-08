@@ -1,6 +1,6 @@
 // src/modules/core/controllers/authController.js
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import speakeasy from 'speakeasy';
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import ApiError from '../../../utils/ApiError.js';
@@ -9,27 +9,83 @@ import {
   Rol,
   Permiso,
   EmailVerificationToken,
-  PasswordResetToken
+  PasswordResetToken,
+  Organizacion,
+  OrganizacionUsuario,
+  OrganizacionInvitacion
 } from '../models/index.js';
 import { sendTemplate } from '../../../services/email/index.js';
 import { OAuth2Client } from 'google-auth-library';
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const googleClient = new OAuth2Client(process.env.googleClientId || process.env.GOOGLE_CLIENT_ID);
 
-// -------------------- Helper --------------------
-const generarJWT = (user) => {
+// -------------------- Helpers --------------------
+const FE_BASE = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
+
+const generarJWT = (userId, orgId, roleId) => {
   return jwt.sign(
-    { id: user.id, email: user.email },
+    { id: userId, orgId, roleId },
     process.env.JWT_SECRET,
     { expiresIn: '12h' }
   );
 };
 
-// -------------------- Registro --------------------
+const buildUserPayload = async (userId, orgId = null) => {
+  const user = await Usuario.findByPk(userId);
+  if (!user) throw new ApiError(401, 'Usuario no encontrado', 'AUTH_USER_NOT_FOUND');
+
+  // Si no hay organización => es superadmin_global
+  if (!orgId) {
+    return {
+      id: user.id,
+      email: user.email,
+      organizacion: null,
+      rol: 'superadmin_global',
+      permisos: ['*']
+    };
+  }
+
+  const membership = await OrganizacionUsuario.findOne({
+    where: { usuario_id: userId, organizacion_id: orgId, estado: 'activo' },
+    include: [
+      { model: Rol, as: 'rol', include: [{ model: Permiso, as: 'permisos' }] },
+      { model: Organizacion, as: 'organizacion' }
+    ]
+  });
+
+  if (!membership) {
+    throw new ApiError(403, 'No perteneces a esta organización', 'ORG_ACCESS_DENIED');
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    organizacion: {
+      id: membership.organizacion_id,
+      nombre: membership.organizacion?.nombre,
+      dominio: membership.organizacion?.dominio
+    },
+    rol: membership.rol?.nombre,
+    permisos: membership.rol?.permisos?.map(p => p.nombre) || []
+  };
+};
+
+const ensureAdminRoleForOrg = async (orgId) => {
+  let role = await Rol.findOne({ where: { organizacion_id: orgId, nombre: 'admin' } });
+  if (!role) {
+    role = await Rol.create({
+      organizacion_id: orgId,
+      nombre: 'admin',
+      descripcion: 'Súper Administrador'
+    });
+  }
+  return role;
+};
+
+// -------------------- Registro Step 1 --------------------
 export const register = async (req, res, next) => {
   try {
-    const { nombre, apellido, email, password, organizacionId } = req.body;
-
+    const { nombre, apellido, email, password } = req.body;
     const existente = await Usuario.findOne({ where: { email } });
     if (existente) throw new ApiError(400, 'El email ya está registrado', 'EMAIL_DUPLICATE');
 
@@ -38,11 +94,56 @@ export const register = async (req, res, next) => {
       apellido,
       email,
       password,
-      organizacionId,
-      activo: false // Espera verificación
+      activo: false
     });
 
-    // Crear token de verificación
+    const pendingToken = jwt.sign(
+      { userId: usuario.id, email: usuario.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Usuario registrado. Continúa con los datos de la empresa o unite a una existente.',
+      pendingToken
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// -------------------- Registro Step 2 (Crear organización) --------------------
+export const registerOrganization = async (req, res, next) => {
+  try {
+    const { pendingToken, nombre, dominio, sector, descripcionProblema, consultasMes } = req.body;
+    if (!pendingToken) throw new ApiError(400, 'Token de registro requerido', 'REGISTER_TOKEN_MISSING');
+
+    const decoded = jwt.verify(pendingToken, process.env.JWT_SECRET);
+    const usuario = await Usuario.findByPk(decoded.userId);
+    if (!usuario) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
+
+    const dominioLower = dominio.trim().toLowerCase();
+    const existente = await Organizacion.findOne({ where: { dominio: dominioLower } });
+    if (existente) throw new ApiError(400, 'El dominio ya está registrado', 'ORG_DOMAIN_DUPLICATE');
+
+    const organizacion = await Organizacion.create({
+      nombre,
+      dominio: dominioLower,
+      sector,
+      problemas: descripcionProblema || null,
+      consultas_mes: consultasMes || null,
+      activo: true
+    });
+
+    const rolAdmin = await ensureAdminRoleForOrg(organizacion.id);
+    await OrganizacionUsuario.create({
+      organizacion_id: organizacion.id,
+      usuario_id: usuario.id,
+      rol_id: rolAdmin.id,
+      estado: 'activo'
+    });
+
     const token = crypto.randomUUID();
     await EmailVerificationToken.create({
       usuarioId: usuario.id,
@@ -50,20 +151,108 @@ export const register = async (req, res, next) => {
       expiracion: new Date(Date.now() + 24 * 60 * 60 * 1000)
     });
 
-    // Enviar email de verificación
     await sendTemplate({
       to: usuario.email,
       template: 'verify-email',
       subject: 'Verificá tu cuenta en FedesCRM',
-      vars: {
-        name: usuario.nombre,
-        verifyLink: `${process.env.FRONTEND_URL}/verify/${token}`
-      }
+      vars: { verifyLink: `${FE_BASE}/verify/${token}` }
     });
 
-    res.status(201).json({
+    res.json({ success: true, message: 'Organización creada. Revisá tu email para activar tu cuenta.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// -------------------- Unirse a organización --------------------
+export const joinOrganization = async (req, res, next) => {
+  try {
+    const { inviteToken, orgId, dominio } = req.body;
+
+    // Detecta si viene del flujo pendingToken o de usuario activo
+    const usuarioId = req.pendingUser?.id || req.user?.id;
+
+    if (!usuarioId) {
+      throw new ApiError(401, 'Usuario no autenticado', 'AUTH_REQUIRED');
+    }
+
+    const usuario = await Usuario.findByPk(usuarioId);
+    if (!usuario) {
+      throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
+    }
+
+    let org = null;
+
+    // Caso 1: unión por invitación
+    if (inviteToken) {
+      const invite = await OrganizacionInvitacion.findOne({
+        where: {
+          token: inviteToken,
+          accepted_at: null,
+          expires_at: { [Op.gt]: new Date() }
+        }
+      });
+
+      if (!invite) {
+        throw new ApiError(400, 'Invitación inválida o expirada', 'INVITE_INVALID');
+      }
+
+      org = await Organizacion.findByPk(invite.organizacion_id);
+      if (!org) {
+        throw new ApiError(404, 'Organización no encontrada', 'ORG_NOT_FOUND');
+      }
+
+      await OrganizacionUsuario.create({
+        organizacion_id: org.id,
+        usuario_id: usuario.id,
+        rol_id: invite.rol_id || null,
+        estado: 'activo'
+      });
+
+      invite.accepted_at = new Date();
+      await invite.save();
+    } else {
+      // Caso 2: unión directa por orgId o dominio
+      org = orgId
+        ? await Organizacion.findByPk(orgId)
+        : await Organizacion.findOne({
+            where: { dominio: (dominio || '').toLowerCase() }
+          });
+
+      if (!org) {
+        throw new ApiError(404, 'Organización no encontrada', 'ORG_NOT_FOUND');
+      }
+
+      await OrganizacionUsuario.create({
+        organizacion_id: org.id,
+        usuario_id: usuario.id,
+        rol_id: null,
+        estado: 'pendiente'
+      });
+    }
+
+    // Si el usuario aún no está activo (flujo pendingToken), generar token de verificación de email
+    if (!usuario.activo) {
+      const token = crypto.randomUUID();
+      await EmailVerificationToken.create({
+        usuarioId: usuario.id,
+        token,
+        expiracion: new Date(Date.now() + 24 * 60 * 60 * 1000)
+      });
+
+      await sendTemplate({
+        to: usuario.email,
+        template: 'verify-email',
+        subject: 'Verificá tu cuenta en FedesCRM',
+        vars: { verifyLink: `${FE_BASE}/verify/${token}` }
+      });
+    }
+
+    res.json({
       success: true,
-      message: 'Usuario registrado. Revisa tu email para verificar tu cuenta.'
+      message: inviteToken
+        ? 'Te uniste a la organización correctamente.'
+        : 'Solicitud enviada. Un admin debe aprobar tu acceso.'
     });
   } catch (err) {
     next(err);
@@ -73,54 +262,189 @@ export const register = async (req, res, next) => {
 // -------------------- Login --------------------
 export const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-
-    const user = await Usuario.scope(null).findOne({
-      where: { email },
-      include: {
-        model: Rol,
-        as: 'rol',
-        include: { model: Permiso }
-      }
-    });
-
+    const { email, password, orgId } = req.body;
+    const user = await Usuario.scope(null).findOne({ where: { email } });
     if (!user) throw new ApiError(401, 'Credenciales inválidas', 'LOGIN_INVALID');
 
     const valido = await user.validarPassword(password);
     if (!valido) throw new ApiError(401, 'Credenciales inválidas', 'LOGIN_INVALID');
-
     if (!user.activo) throw new ApiError(403, 'La cuenta no está activada', 'ACCOUNT_INACTIVE');
 
-    // Actualizar último login
+    const memberships = await OrganizacionUsuario.findAll({
+      where: { usuario_id: user.id, estado: 'activo' },
+      include: [{ model: Organizacion, as: 'organizacion' }, { model: Rol, as: 'rol' }]
+    });
+
+    if (!memberships.length) {
+      if (user.rolGlobal === 'superadmin_global') {
+        const token = generarJWT(user.id, null, null);
+        const payload = await buildUserPayload(user.id, null);
+        return res.json({ success: true, token, user: payload });
+      }
+      throw new ApiError(403, 'No perteneces a ninguna organización', 'NO_ORG_MEMBERSHIP');
+    }
+
+    let selected = memberships[0];
+    if (orgId) {
+      selected = memberships.find(m => m.organizacion_id === orgId);
+      if (!selected) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENIED');
+    } else if (memberships.length > 1) {
+      return res.status(409).json({
+        success: false,
+        code: 'MULTIPLE_ORGS',
+        message: 'Seleccioná una organización',
+        options: memberships.map(m => ({
+          orgId: m.organizacion_id,
+          nombre: m.organizacion?.nombre,
+          rol: m.rol?.nombre
+        }))
+      });
+    }
+
     user.ultimoLogin = new Date();
     await user.save();
-
-    res.json({
-      success: true,
-      token: generarJWT(user),
-      user: {
-        id: user.id,
-        email: user.email,
-        rol: user.rol?.nombre,
-        permisos: user.rol?.Permisos?.map(p => p.nombre) || []
-      }
-    });
+    const token = generarJWT(user.id, selected.organizacion_id, selected.rol_id);
+    const payload = await buildUserPayload(user.id, selected.organizacion_id);
+    res.json({ success: true, token, user: payload });
   } catch (err) {
     next(err);
   }
 };
 
+// -------------------- Login con 2FA --------------------
+export const login2FA = async (req, res, next) => {
+  try {
+    const { email, token, orgId } = req.body;
+    if (!email || !token)
+      throw new ApiError(400, 'Email y token 2FA requeridos', '2FA_REQUIRED');
+
+    const user = await Usuario.scope(null).findOne({ where: { email } });
+    if (!user) throw new ApiError(401, 'Credenciales inválidas', 'LOGIN_INVALID');
+
+    if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new ApiError(400, 'El usuario no tiene 2FA configurado', '2FA_NOT_CONFIGURED');
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token,
+      window: 2
+    });
+    if (!verified) throw new ApiError(401, 'Código 2FA inválido', '2FA_INVALID');
+
+    const memberships = await OrganizacionUsuario.findAll({
+      where: { usuario_id: user.id, estado: 'activo' },
+      include: [{ model: Organizacion, as: 'organizacion' }, { model: Rol, as: 'rol' }]
+    });
+
+    if (!memberships.length) {
+      if (user.rolGlobal === 'superadmin_global') {
+        const jwtToken = generarJWT(user.id, null, null);
+        const payload = await buildUserPayload(user.id, null);
+        return res.json({ success: true, token: jwtToken, user: payload });
+      }
+      throw new ApiError(403, 'No perteneces a ninguna organización', 'NO_ORG_MEMBERSHIP');
+    }
+
+    let selected = memberships[0];
+    if (orgId) {
+      selected = memberships.find(m => m.organizacion_id === orgId);
+      if (!selected) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENIED');
+    } else if (memberships.length > 1) {
+      return res.status(409).json({
+        success: false,
+        code: 'MULTIPLE_ORGS',
+        message: 'Seleccioná una organización',
+        options: memberships.map(m => ({
+          orgId: m.organizacion_id,
+          nombre: m.organizacion?.nombre,
+          rol: m.rol?.nombre
+        }))
+      });
+    }
+
+    user.ultimoLogin = new Date();
+    await user.save();
+
+    const jwtToken = generarJWT(user.id, selected.organizacion_id, selected.rol_id);
+    const payload = await buildUserPayload(user.id, selected.organizacion_id);
+    res.json({ success: true, token: jwtToken, user: payload });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// -------------------- Setup 2FA --------------------
+export const setup2FA = async (req, res, next) => {
+  try {
+    const user = await Usuario.findByPk(req.user.id);
+    if (!user) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
+
+    const secret = speakeasy.generateSecret({ name: 'FedesCRM 2FA' });
+    user.twoFactorSecret = secret.base32;
+    await user.save();
+
+    const QRCode = await import('qrcode');
+    const qrImage = await QRCode.toDataURL(secret.otpauth_url);
+
+    res.json({ success: true, secret: secret.base32, qrImage });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// -------------------- Verify 2FA --------------------
+export const verify2FA = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    const user = await Usuario.findByPk(req.user.id);
+    if (!user || !user.twoFactorSecret)
+      throw new ApiError(400, '2FA no configurado', '2FA_NOT_CONFIGURED');
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token,
+      window: 1
+    });
+
+    if (!verified) throw new ApiError(401, 'Código inválido', '2FA_INVALID');
+
+    user.twoFactorEnabled = true;
+    await user.save();
+
+    res.json({ success: true, message: '2FA activado correctamente' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// -------------------- Disable 2FA --------------------
+export const disable2FA = async (req, res, next) => {
+  try {
+    const user = await Usuario.findByPk(req.user.id);
+    if (!user) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
+
+    user.twoFactorEnabled = false;
+    user.twoFactorSecret = null;
+    await user.save();
+
+    res.json({ success: true, message: '2FA desactivado correctamente' });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // -------------------- Login con Google --------------------
 export const googleLogin = async (req, res, next) => {
   try {
-    const { idToken } = req.body;
+    const { idToken, orgId } = req.body;
     if (!idToken) throw new ApiError(400, 'Token de Google requerido', 'GOOGLE_TOKEN_REQUIRED');
 
-    // 1. Verificar token con Google
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID
+      audience: process.env.googleClientId || process.env.GOOGLE_CLIENT_ID
     });
     const payload = ticket.getPayload();
 
@@ -129,7 +453,6 @@ export const googleLogin = async (req, res, next) => {
     const nombre = payload.given_name;
     const apellido = payload.family_name;
 
-    // 2. Buscar o crear usuario
     let user = await Usuario.findOne({ where: { oauthId: googleId } });
 
     if (!user) {
@@ -141,29 +464,52 @@ export const googleLogin = async (req, res, next) => {
         proveedor: 'google',
         activo: true
       });
-
-      // Email de bienvenida
-      await sendTemplate({
-        to: user.email,
-        template: 'welcome',
-        subject: `¡Bienvenido a ${process.env.APP_NAME || 'FedesCRM'}!`,
-        vars: {
-          name: user.nombre,
-          dashboardLink: `${process.env.FRONTEND_URL}/dashboard`
-        }
+      return res.status(200).json({
+        success: true,
+        code: 'ACCOUNT_CREATED_NO_ORG',
+        message: 'Cuenta creada con Google. Debés crear o unirte a una organización.',
+        pendingToken: jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' })
       });
     }
 
-    // 3. Respuesta con JWT
-    res.json({
-      success: true,
-      token: generarJWT(user),
-      user: {
-        id: user.id,
-        email: user.email,
-        nombre: user.nombre
-      }
+    const memberships = await OrganizacionUsuario.findAll({
+      where: { usuario_id: user.id, estado: 'activo' },
+      include: [{ model: Organizacion, as: 'organizacion' }, { model: Rol, as: 'rol' }]
     });
+
+    if (!memberships.length) {
+      if (user.rolGlobal === 'superadmin_global') {
+        const token = generarJWT(user.id, null, null);
+        const data = await buildUserPayload(user.id, null);
+        return res.json({ success: true, token, user: data });
+      }
+      return res.status(403).json({
+        success: false,
+        code: 'NO_ORG_MEMBERSHIP',
+        message: 'No perteneces a ninguna organización. Creá o unite a una.'
+      });
+    }
+
+    let selected = memberships[0];
+    if (orgId) {
+      selected = memberships.find(m => m.organizacion_id === orgId);
+      if (!selected) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENIED');
+    } else if (memberships.length > 1) {
+      return res.status(409).json({
+        success: false,
+        code: 'MULTIPLE_ORGS',
+        message: 'Seleccioná una organización',
+        options: memberships.map(m => ({
+          orgId: m.organizacion_id,
+          nombre: m.organizacion?.nombre,
+          rol: m.rol?.nombre
+        }))
+      });
+    }
+
+    const token = generarJWT(user.id, selected.organizacion_id, selected.rol_id);
+    const data = await buildUserPayload(user.id, selected.organizacion_id);
+    res.json({ success: true, token, user: data });
   } catch (err) {
     next(err);
   }
@@ -183,14 +529,11 @@ export const forgotPassword = async (req, res, next) => {
       expiracion: new Date(Date.now() + 3600 * 1000)
     });
 
-    // Enviar email de recuperación
     await sendTemplate({
       to: user.email,
       template: 'reset-password',
       subject: 'Recuperá tu contraseña',
-      vars: {
-        resetLink: `${process.env.FRONTEND_URL}/reset-password/${token}`
-      }
+      vars: { resetLink: `${FE_BASE}/reset-password/${token}` }
     });
 
     res.json({ success: true, message: 'Se envió el enlace para recuperar la contraseña' });
@@ -221,7 +564,6 @@ export const resetPassword = async (req, res, next) => {
     record.usado = true;
     await record.save();
 
-    // Notificar por email que la contraseña se actualizó
     await sendTemplate({
       to: user.email,
       template: 'password-updated',
@@ -239,6 +581,9 @@ export const resetPassword = async (req, res, next) => {
 export const verifyEmail = async (req, res, next) => {
   try {
     const { token } = req.body;
+    if (!token || typeof token !== 'string') {
+      throw new ApiError(422, 'Token requerido', 'VALIDATION_ERROR');
+    }
 
     const record = await EmailVerificationToken.findOne({
       where: {
@@ -257,18 +602,44 @@ export const verifyEmail = async (req, res, next) => {
     record.usado = true;
     await record.save();
 
-    // Email de bienvenida
     await sendTemplate({
       to: user.email,
       template: 'welcome',
       subject: `¡Bienvenido a ${process.env.APP_NAME || 'FedesCRM'}!`,
       vars: {
         name: user.nombre,
-        dashboardLink: `${process.env.FRONTEND_URL}/dashboard`
+        dashboardLink: `${FE_BASE}/dashboard`
       }
     });
 
     res.json({ success: true, message: 'Email verificado correctamente' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// -------------------- Switch de organización --------------------
+export const switchOrganization = async (req, res, next) => {
+  try {
+    const { orgId } = req.body;
+    if (!orgId) throw new ApiError(422, 'orgId requerido', 'VALIDATION_ERROR');
+
+    const userId = req.user.id;
+
+    if (req.user.rol === 'superadmin_global' && !orgId) {
+      const token = generarJWT(userId, null, null);
+      const user = await buildUserPayload(userId, null);
+      return res.json({ success: true, token, user });
+    }
+
+    const membership = await OrganizacionUsuario.findOne({
+      where: { usuario_id: userId, organizacion_id: orgId, estado: 'activo' }
+    });
+    if (!membership) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENIED');
+
+    const token = generarJWT(userId, orgId, membership.rol_id);
+    const user = await buildUserPayload(userId, orgId);
+    res.json({ success: true, token, user });
   } catch (err) {
     next(err);
   }

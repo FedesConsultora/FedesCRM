@@ -3,9 +3,9 @@
 export default (sequelize, DataTypes) => {
   const PasswordResetToken = sequelize.define('PasswordResetToken', {
     id: {
-      type        : DataTypes.UUID,
+      type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
-      primaryKey  : true
+      primaryKey: true
     },
     usuarioId: {
       type: DataTypes.UUID,
@@ -13,23 +13,25 @@ export default (sequelize, DataTypes) => {
       field: 'usuario_id'
     },
     token: {
-      type     : DataTypes.STRING,
+      type: DataTypes.STRING,
       allowNull: false,
-      unique   : true
+      unique: true
     },
     expiracion: {
-      type     : DataTypes.DATE,
+      type: DataTypes.DATE,
       allowNull: false
     },
     usado: {
-      type     : DataTypes.BOOLEAN,
+      type: DataTypes.BOOLEAN,
       defaultValue: false
     }
   }, {
-    tableName : 'password_reset_tokens',
-    timestamps: true
+    tableName: 'password_reset_tokens',
+    timestamps: true,
+    createdAt: 'created_at',  
+    updatedAt: 'updated_at',  
+    paranoid: false           
   });
-
 
   return PasswordResetToken;
 };

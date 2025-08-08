@@ -10,6 +10,8 @@ import rolPermisoModel from './rolPermiso.js';
 import auditLogModel from './auditLog.js';
 import emailVerificationTokenModel from './emailVerificationToken.js';
 import passwordResetTokenModel from './passwordResetToken.js';
+import organizacionUsuarioModel from './organizacionUsuario.js';
+import organizacionInvitacionModel from './organizacionInvitacion.js';
 import { applyCoreAssociations } from './associations.js';
 
 // Inicialización de modelos
@@ -21,6 +23,8 @@ const RolPermiso = rolPermisoModel(sequelize, DataTypes);
 const AuditLog = auditLogModel(sequelize, DataTypes);
 const EmailVerificationToken = emailVerificationTokenModel(sequelize, DataTypes);
 const PasswordResetToken = passwordResetTokenModel(sequelize, DataTypes);
+const OrganizacionUsuario = organizacionUsuarioModel(sequelize, DataTypes);
+const OrganizacionInvitacion = organizacionInvitacionModel(sequelize, DataTypes);
 
 // Asociaciones
 applyCoreAssociations({
@@ -31,7 +35,9 @@ applyCoreAssociations({
   RolPermiso,
   AuditLog,
   EmailVerificationToken,
-  PasswordResetToken
+  PasswordResetToken,
+  OrganizacionUsuario,
+  OrganizacionInvitacion
 });
 
 // Exportar individualmente
@@ -44,5 +50,7 @@ export {
   RolPermiso,
   AuditLog,
   EmailVerificationToken,
-  PasswordResetToken
+  PasswordResetToken,
+  OrganizacionUsuario,
+  OrganizacionInvitacion
 };

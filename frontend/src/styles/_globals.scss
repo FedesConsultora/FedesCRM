@@ -1,0 +1,42 @@
+@use './variables' as v;
+
+a {
+  color: v.$primary-color;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+button {
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  transition: 0.2s ease-in-out;
+
+  &.logout-btn {
+    background: v.$secondary-color;
+    color: v.$white;
+
+    &:hover {
+      background: darken(v.$secondary-color, 5%);
+    }
+  }
+
+  &.google-btn {
+    background: v.$white;
+    border: 1px solid #ccc;
+    color: v.$text-color;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    &:hover {
+      background: #f1f1f1;
+    }
+  }
+}
+
+h1, h2, h3, h4, h5 {
+  font-weight: 600;
+}

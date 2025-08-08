@@ -1,0 +1,30 @@
+// src/styles/_logo.scss
+@use './variables' as v;
+
+.logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &.logo-horizontal {
+    flex-direction: row;
+    gap: 0.5rem;
+  }
+
+  &.logo-vertical {
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .logo-icon {
+    width: 130px;
+    height: auto;
+  }
+
+  .logo-text {
+    width: 180px;
+    height: auto;
+    position: relative;
+    bottom: 1rem;
+  }
+}

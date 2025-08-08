@@ -1,0 +1,43 @@
+@use './variables' as v;
+
+.dashboard-page {
+  padding: 2rem;
+
+  h2 {
+    margin-bottom: 1rem;
+    color: v.$primary-color;
+  }
+
+  .dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+
+    .stat-card {
+      background: v.$white;
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      text-align: center;
+      transition: 0.2s ease-in-out;
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      }
+
+      h3 {
+        font-size: 1.2rem;
+        color: v.$text-color;
+      }
+
+      p {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-top: 0.5rem;
+        color: v.$primary-color;
+      }
+    }
+  }
+}

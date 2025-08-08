@@ -1,5 +1,4 @@
 // src/modules/core/models/permiso.js
-
 export default (sequelize, DataTypes) => {
   const Permiso = sequelize.define('Permiso', {
     nombre: {
@@ -13,9 +12,12 @@ export default (sequelize, DataTypes) => {
     }
   }, {
     tableName: 'permisos',
+    timestamps: true,        
+    createdAt: 'created_at', 
+    updatedAt: 'updated_at',
+    deletedAt: 'deleted_at',
     paranoid : true
   });
-
 
   return Permiso;
 };

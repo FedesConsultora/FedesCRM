@@ -1,33 +1,62 @@
+// src/modules/core/validators/authValidator.js
 import { body } from 'express-validator';
 import validateRequest from '../../../middlewares/validateRequest.js';
 
 export const loginValidator = [
   body('email').isEmail().withMessage('Email inválido'),
   body('password').notEmpty().withMessage('La contraseña es requerida'),
+  body('orgId').optional().isUUID().withMessage('orgId inválido'),
   validateRequest
 ];
 
 export const registerValidator = [
-  body('nombre').notEmpty().withMessage('Nombre es requerido'),
-  body('apellido').notEmpty().withMessage('Apellido es requerido'),
-  body('email').isEmail().withMessage('Email inválido'),
-  body('password').isLength({ min: 6 }).withMessage('Mínimo 6 caracteres'),
-  body('organizacionId').notEmpty().withMessage('Organización es requerida'),
+  body('nombre').notEmpty(),
+  body('apellido').notEmpty(),
+  body('email').isEmail(),
+  body('password').isLength({ min: 6 }),
+  validateRequest
+];
+
+export const registerOrganizationValidator = [
+  body('pendingToken').notEmpty(),
+  body('nombre').notEmpty(),
+  body('dominio').notEmpty(),
+  body('sector').optional().isString(),
+  body('descripcionProblema').optional().isLength({ max: 500 }),
+  validateRequest
+];
+
+export const joinOrganizationValidator = [
+  body('pendingToken').notEmpty(),
+  body().custom((val) => {
+    if (!val.inviteToken && !val.orgId && !val.dominio) {
+      throw new Error('Debes indicar inviteToken, orgId o dominio');
+    }
+    return true;
+  }),
+  body('inviteToken').optional().isString(),
+  body('orgId').optional().isUUID(),
+  body('dominio').optional().isString(),
+  validateRequest
+];
+
+export const switchOrgValidator = [
+  body('orgId').isUUID().withMessage('orgId inválido'),
   validateRequest
 ];
 
 export const forgotPasswordValidator = [
-  body('email').isEmail().withMessage('Email inválido'),
+  body('email').isEmail(),
   validateRequest
 ];
 
 export const resetPasswordValidator = [
-  body('token').notEmpty().withMessage('Token requerido'),
-  body('newPassword').isLength({ min: 6 }).withMessage('Mínimo 6 caracteres'),
+  body('token').notEmpty(),
+  body('newPassword').isLength({ min: 6 }),
   validateRequest
 ];
 
 export const verifyEmailValidator = [
-  body('token').notEmpty().withMessage('Token requerido'),
+  body('token').notEmpty(),
   validateRequest
 ];

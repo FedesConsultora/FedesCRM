@@ -1,0 +1,18 @@
+@use './variables' as v;
+
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+
+  &.auth-card {
+    background: v.$white;
+    padding: 3rem;
+    border-radius: 8px;
+    max-width: 400px;
+    width: 100%;
+    margin: auto;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  }
+}
