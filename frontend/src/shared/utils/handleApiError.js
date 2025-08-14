@@ -1,5 +1,3 @@
-// src/shared/utils/handleApiError.js
-
 /**
  * Manejo centralizado de errores para FedesCRM Frontend.
  * - Soporta estructura estándar { success, message, code, details?, options? }
@@ -14,56 +12,60 @@
 export function handleApiError(error, showToast, setFieldErrors, showModal) {
   const sendToast = (type, message) => {
     if (!showToast) return;
-    // Compatibilidad con ambas firmas documentadas
     try {
       if (typeof showToast === 'function') {
-        // Preferir firma (msg, type) del Readme
         showToast(message, type);
       }
     } catch (_) {
-      // Fallback a firma { type, message }
       try { showToast({ type, message }); } catch (_) {}
     }
   };
 
+  // ---- Blindaje anti-ruido para /core/auth/me sin sesión ----
+  const url    = error?.config?.url || '';
+  const status = error?.response?.status;
+  const code   = error?.response?.data?.code;
+
+  // Si estamos pegándole a /me y el backend responde que no hay token / 401,
+  // no mostramos nada (es un estado "no logueado" normal en /login).
+  const isMeEndpoint = /\/core\/auth\/me$/.test(url);
+  if (isMeEndpoint && (status === 401 || code === 'AUTH_NO_TOKEN')) {
+    return; // silencioso: sin toast ni modal
+  }
+
   let message = 'Error inesperado';
-  let code = 'ERROR_INTERNO';
+  let normalizedCode = 'ERROR_INTERNO';
   let details = [];
   let options = undefined; // p/ MULTIPLE_ORGS u otros
 
-  // ¿Vino de Axios con respuesta estructurada?
   if (error?.response?.data) {
     const data = error.response.data;
     message = data.message || message;
-    code = data.code || code;
+    normalizedCode = data.code || normalizedCode;
     details = data.details || [];
     options = data.options;
   } else if (error?.message) {
-    // Errores locales (JS / red)
     message = error.message;
   }
 
-  // Log útil para dev
-  console.error(`❌ API Error [${code}]:`, message, details, options || '');
+  console.error(`❌ API Error [${normalizedCode}]:`, message, details, options || '');
 
   // 1) Errores de validación por campo
-  if (code === 'VALIDATION_ERROR' && Array.isArray(details) && details.length && typeof setFieldErrors === 'function') {
+  if (normalizedCode === 'VALIDATION_ERROR' && Array.isArray(details) && details.length && typeof setFieldErrors === 'function') {
     const formErrors = {};
     details.forEach((err) => { formErrors[err.field] = err.message; });
     setFieldErrors(formErrors);
-    // Además, un toast corto para contexto
     sendToast('error', 'Revisá los campos del formulario.');
     return;
   }
 
   // 2) Casos que requieren MODAL (bloquean o necesitan acción)
-  switch (code) {
+  switch (normalizedCode) {
     /* ---------------------------- Sesión / Tokens ---------------------------- */
     case 'AUTH_NO_TOKEN':
     case 'AUTH_INVALID_TOKEN':
     case 'AUTH_TOKEN_EXPIRED':
     case 'AUTH_PAYLOAD_INVALID':
-      // Sesión inválida/expirada → modal de info + CTA a login
       showModal?.({
         type: 'confirm',
         title: 'Sesión expirada',
@@ -76,7 +78,6 @@ export function handleApiError(error, showToast, setFieldErrors, showModal) {
     /* -------------------------- Cuenta / Activación -------------------------- */
     case 'ACCOUNT_INACTIVE':
     case 'EMAIL_NO_VERIFICADO':
-      // Modal especial (tipo "resend") para reenviar verificación
       showModal?.({
         type: 'resend',
         title: 'Cuenta no verificada',
@@ -84,9 +85,9 @@ export function handleApiError(error, showToast, setFieldErrors, showModal) {
       });
       return;
 
-    /* ------------------------------ Multi‑organización ------------------------------ */
+    /* ------------------------------ Multi-organización ------------------------------ */
     case 'ORG_ACCESS_DENIED':
-    case 'ORG_ACCESS_DENEGADO': // hay variantes en middlewares
+    case 'ORG_ACCESS_DENEGADO':
       showModal?.({
         title: 'Organización no permitida',
         message: 'No pertenecés a esa organización. Seleccioná otra o pedí acceso.',
@@ -117,8 +118,6 @@ export function handleApiError(error, showToast, setFieldErrors, showModal) {
       return;
 
     case 'MULTIPLE_ORGS':
-      // El backend puede devolver `options` con { orgId, nombre, rol }
-      // Sugerimos un modal custom "select-org" (extensible en ModalProvider)
       showModal?.({
         type: 'select-org',
         title: 'Seleccioná una organización',
@@ -173,10 +172,14 @@ export function handleApiError(error, showToast, setFieldErrors, showModal) {
     case 'TOKEN_EXPIRED':
       sendToast('error', 'El enlace ha expirado o no es válido.');
       return;
+
+    default:
+      // No accionamos modal acá; dejamos seguir al fallback
+      break;
   }
 
-  // 3) Errores de dominio (toasts: feedback simple y rápido)
-  switch (code) {
+  // 3) Errores de dominio (toasts simples)
+  switch (normalizedCode) {
     /* ------------------------------- Auth básicas ------------------------------- */
     case 'LOGIN_INVALID':
       sendToast('error', 'Credenciales inválidas');
@@ -191,7 +194,6 @@ export function handleApiError(error, showToast, setFieldErrors, showModal) {
       return;
     case 'EMAIL_DUPLICATE':
     case 'EMAIL_EXISTS':
-      // Marcar campo email si hay formulario
       if (typeof setFieldErrors === 'function') setFieldErrors({ email: 'Este correo ya está registrado' });
       else sendToast('error', 'Este correo ya está registrado');
       return;
@@ -231,9 +233,12 @@ export function handleApiError(error, showToast, setFieldErrors, showModal) {
     case 'REQUEST_ALREADY_PENDING':
       sendToast('info', 'Ya existe una solicitud pendiente para esta organización');
       return;
+
+    default:
+      break;
   }
 
-  // 4) Fallbacks: si hay `details` sin VALIDATION_ERROR (poco común), mostrar toast genérico
+  // 4) Fallbacks con details sin VALIDATION_ERROR
   if (Array.isArray(details) && details.length && typeof setFieldErrors === 'function') {
     const map = {};
     details.forEach((err) => { map[err.field] = err.message; });

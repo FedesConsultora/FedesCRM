@@ -21,6 +21,9 @@ export const disable2FA        = ()      => api.post('/core/auth/2fa/disable');
 export const googleLogin       = (data)  => api.post('/core/auth/google', data); // intercambio del token de Google en tu back
 
 export const verifyEmail       = (token) => api.post('/core/auth/verify-email', { token });
+export const resendVerification = (data) =>
+  api.post('/core/auth/resend-verification', data);
+
 export const forgotPassword    = (data)  => api.post('/core/auth/forgot-password', data);
 export const resetPassword     = (data)  => api.post('/core/auth/reset-password', data);
 
@@ -90,3 +93,8 @@ export const joinRequest       = (orgId)                => api.post(orgPath(orgI
 /* --------------------------------- AUDIT LOGS ------------------------------ */
 // /api/core/audit-logs (auth + permiso 'audit-logs.ver')
 export const getAuditLogs      = (params)               => api.get('/core/audit-logs', { params });
+
+
+// Invitaciones (scoped) — ajustá el path si tu router usa otro nombre
+export const getInvitaciones = (orgId, params) =>
+  api.get(`/core/orgs/${orgId}/invitaciones`, { params });

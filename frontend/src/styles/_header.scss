@@ -1,0 +1,93 @@
+@use 'sass:color';
+@use './variables' as v;
+
+/* Tokens locales para mantener todo alineado */
+:root {
+  --container-x: clamp(1rem, 2.4vw, 2rem); /* margen horizontal compartido */
+  --section-gap: clamp(1rem, 1.8vw, 1.5rem);
+  --card-radius: 14px;
+}
+
+.app-header {
+  background: #fff;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+  padding-block: .9rem;
+  padding-inline: var(--container-x); /* ← mismo gutter que Dashboard */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+
+  .left {
+    display: flex; align-items: center; gap: .55rem .6rem; flex-wrap: wrap;
+
+    .title {
+      margin: 0;
+      font-size: clamp(1.1rem, 2vw, 1.4rem);
+      color: v.$primary-color;
+      letter-spacing: .2px;
+    }
+
+    .pill {
+      background: color.scale(v.$secondary-color, $lightness: 86%);
+      border: 1px solid color.scale(v.$secondary-color, $lightness: 20%);
+      color: v.$secondary-color;
+      padding: .2rem .55rem;
+      border-radius: 999px;
+      font-size: .75rem;
+      font-weight: 800;
+    }
+
+    .pill-outline {
+      background: #fff;
+      border-color: color.scale(v.$secondary-color, $lightness: 25%);
+      color: v.$secondary-color;
+    }
+  }
+
+  .right {
+    display: flex; align-items: center; gap: .6rem;
+
+    .org-switch {
+      padding: .45rem .5rem;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,.12);
+      background: #fff;
+      max-width: min(46vw, 280px);
+    }
+
+    .logout-btn {
+      padding: .55rem .9rem;
+      border-radius: 12px;
+      border: 1px solid rgba(0,0,0,.12);
+      background: v.$primary-color;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .1s, box-shadow .1s;
+      &:hover { box-shadow: 0 2px 8px rgba(0,0,0,.14); }
+      &:active { transform: translateY(1px); }
+    }
+  }
+}
+
+/* helper a11y (si no lo tenés global) */
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0);
+  border: 0;
+}
+
+/* Responsive fino */
+@media (max-width: 768px) {
+  .app-header {
+    grid-template-columns: 1fr; /* apilar */
+    row-gap: .6rem;
+
+    .right {
+      justify-content: space-between;
+      .org-switch { flex: 1 1 auto; }
+    }
+  }
+}

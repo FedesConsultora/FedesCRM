@@ -8,27 +8,20 @@ import {
 } from '../validators/organizacionValidator.js';
 import { authMiddleware } from '../../../middlewares/authMiddleware.js';
 import { requirePermiso } from '../../../middlewares/permisoMiddleware.js';
-import  { ensureOrgParam }  from '../../../middlewares/ensureOrgParam.js';
+import { ensureOrgParam } from '../../../middlewares/ensureOrgParam.js';
 
 const router = Router();
 
-// Todas requieren autenticación
 router.use(authMiddleware);
 
-/**
- * Listar TODAS las organizaciones que el usuario puede ver
- * (si es superadmin puede ver todas, si no, solo las que pertenece)
- */
+// Listar organizaciones visibles (tu lógica de permisos manda)
 router.get(
   '/',
   requirePermiso('organizaciones.ver'),
   controller.listar
 );
 
-/**
- * Obtener una organización específica
- * Valida que el usuario pertenezca a ella o tenga permiso global
- */
+// Obtener organización específica (valida pertenencia con ensureOrgParam)
 router.get(
   '/:id',
   idParamValidator,
@@ -37,10 +30,7 @@ router.get(
   controller.obtener
 );
 
-/**
- * Crear nueva organización
- * Generalmente reservado a superadmins
- */
+// Crear nueva organización
 router.post(
   '/',
   crearOrganizacionValidator,
@@ -48,10 +38,7 @@ router.post(
   controller.crear
 );
 
-/**
- * Actualizar organización
- * Valida pertenencia
- */
+// Actualizar organización
 router.patch(
   '/:id',
   actualizarOrganizacionValidator,
@@ -60,10 +47,7 @@ router.patch(
   controller.actualizar
 );
 
-/**
- * Eliminar organización
- * Generalmente reservado a superadmins
- */
+// Eliminar organización
 router.delete(
   '/:id',
   idParamValidator,

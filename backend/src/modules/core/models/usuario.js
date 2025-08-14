@@ -72,16 +72,6 @@ export default (sequelize, DataTypes) => {
       allowNull: true,
       field: 'oauth_id'
     },
-    organizacion_id: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      field: 'organizacion_id'
-    },
-    rol_id: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      field: 'rol_id'
-    }
   }, {
     tableName: 'usuarios',
     paranoid: true,

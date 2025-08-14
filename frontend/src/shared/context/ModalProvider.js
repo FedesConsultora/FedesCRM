@@ -99,15 +99,11 @@ export default function ModalProvider({ children }) {
         type="button"
         className="google-btn"
         onClick={() => {
-        /**
-         * OPCIÓN A (redirect): pasá onConfirm que haga window.location.href = googleAuthUrl()
-         * OPCIÓN B (One Tap / useGoogleLogin): pasá onConfirm que obtenga idToken y luego llame a tu api googleLogin({ idToken })
-         * No llamamos googleLogin() sin idToken porque tu back espera ese token del cliente.
-         */
+          // OPCIÓN A (redirect): pasá onConfirm que haga window.location.href = googleAuthUrl()
+          // OPCIÓN B (One Tap / useGoogleLogin): pasá onConfirm que obtenga idToken y luego llame a tu api googleLogin({ idToken })
           if (typeof modal?.onConfirm === 'function') {
             modal.onConfirm();
           }
-          // Si no pasaste onConfirm, no hacemos nada para evitar 400 en /core/auth/google
         }}
       >
         <FcGoogle size={20} /> Iniciar con Google
@@ -117,67 +113,6 @@ export default function ModalProvider({ children }) {
       </button>
     </div>
   );
-
-  const ResendBlock = () => (
-    // Si tenés componente dedicado, usalo aquí:
-    // <ResendConfirmationModal email={modal?.email} onClose={closeModal} />
-    <div className="modal-actions" style={{ marginTop: '1rem', textAlign: 'center' }}>
-      <p style={{ fontSize: '0.9rem', opacity: 0.8 }}>
-        Te enviamos un email para verificar tu cuenta{modal?.email ? `: ${modal.email}` : ''}.
-      </p>
-      <button type="button" onClick={closeModal} className="btn-primary" style={{ marginTop: 12 }}>
-        Entendido
-      </button>
-    </div>
-  );
-
-  const SelectOrgBlock = () => {
-    const opts = Array.isArray(modal?.options) ? modal.options : [];
-    const handleSelect = (orgId) => {
-      // Preferimos onSelect/orgId; si no, usamos onConfirm(orgId); si no, despachamos un evento DOM
-      if (typeof modal?.onSelect === 'function') {
-        modal.onSelect(orgId);
-        closeModal();
-        return;
-      }
-      if (typeof modal?.onConfirm === 'function') {
-        modal.onConfirm(orgId);
-        closeModal();
-        return;
-      }
-      // Fallback: evento global para que AuthProvider u otro escuche y haga changeOrg(orgId)
-      window.dispatchEvent(new CustomEvent('select-org', { detail: { orgId } }));
-      closeModal();
-    };
-
-    return (
-      <div className="modal-actions" style={{ marginTop: '1rem' }}>
-        {opts.length === 0 ? (
-          <p style={{ textAlign: 'center' }}>No hay organizaciones disponibles.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {opts.map((o) => (
-              <li key={o.orgId} style={{ marginBottom: 8 }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}
-                  onClick={() => handleSelect(o.orgId)}
-                  title={o.rol ? `Rol: ${o.rol}` : undefined}
-                >
-                  <span>{o.nombre || 'Organización'}</span>
-                  {o.rol && <small style={{ opacity: 0.8 }}>({o.rol})</small>}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div style={{ textAlign: 'center', marginTop: 10 }}>
-          <button type="button" onClick={closeModal} className="link-btn">Cancelar</button>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <ModalCtx.Provider value={{ showModal, closeModal }}>
@@ -201,7 +136,17 @@ export default function ModalProvider({ children }) {
             {/* --- Tipos --- */}
             {modal.type === 'confirm'     && <ConfirmActions />}
             {modal.type === 'google'      && <GoogleActions />}
-            {modal.type === 'resend'      && <ResendBlock />}
+            {modal.type === 'resend'      && (
+              // Si tenés un componente propio, reemplazá este bloque.
+              <div className="modal-actions" style={{ marginTop: '1rem', textAlign: 'center' }}>
+                <p style={{ fontSize: '0.9rem', opacity: 0.8 }}>
+                  Te enviamos un email para verificar tu cuenta{modal?.email ? `: ${modal.email}` : ''}.
+                </p>
+                <button type="button" onClick={closeModal} className="btn-primary" style={{ marginTop: 12 }}>
+                  Entendido
+                </button>
+              </div>
+            )}
             {modal.type === 'select-org' && (
               <SelectOrgModal
                 title={modal.title}

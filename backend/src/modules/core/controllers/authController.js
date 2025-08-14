@@ -4,6 +4,7 @@ import speakeasy from 'speakeasy';
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import ApiError from '../../../utils/ApiError.js';
+
 import {
   Usuario,
   Rol,
@@ -14,59 +15,75 @@ import {
   OrganizacionUsuario,
   OrganizacionInvitacion
 } from '../models/index.js';
+
 import { sendTemplate } from '../../../services/email/index.js';
 import { OAuth2Client } from 'google-auth-library';
+import { setAuthCookie, clearAuthCookie } from '../../../utils/authCookies.js';
 
-const googleClient = new OAuth2Client(process.env.googleClientId || process.env.GOOGLE_CLIENT_ID);
+// -------------------- Config / Google OAuth --------------------
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.googleClientId;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || process.env.googleClientSecret;
+
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID); // verifyIdToken
+const googleOAuth = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, 'postmessage'); // code -> tokens
 
 // -------------------- Helpers --------------------
 const FE_BASE = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
 
-const generarJWT = (userId, orgId, roleId) => {
-  return jwt.sign(
-    { id: userId, orgId, roleId },
-    process.env.JWT_SECRET,
-    { expiresIn: '12h' }
-  );
-};
+const generarJWT = (userId, orgId, roleId) =>
+  jwt.sign({ id: userId, orgId, roleId }, process.env.JWT_SECRET, { expiresIn: '12h' });
 
+/**
+ * Devuelve el payload de usuario consistente para el frontend.
+ * Incluye:
+ *  - organizacion activa (o null si superadmin)
+ *  - rol, permisos
+ *  - organizations: [{ id, nombre, rol }]
+ */
 const buildUserPayload = async (userId, orgId = null) => {
   const user = await Usuario.findByPk(userId);
   if (!user) throw new ApiError(401, 'Usuario no encontrado', 'AUTH_USER_NOT_FOUND');
 
-  // Si no hay organización => es superadmin_global
+  // ¡OJO! camelCase en atributos del modelo
+  const all = await OrganizacionUsuario.findAll({
+    where: { usuarioId: userId, estado: 'activo' },
+    include: [
+      { model: Organizacion, as: 'organizacion' },
+      { model: Rol, as: 'rol', include: [{ model: Permiso, as: 'permisos' }] },
+    ],
+  });
+
+  const organizations = all.map(m => ({
+    id   : m.organizacionId,
+    nombre: m.organizacion?.nombre,
+    rol  : m.rol?.nombre || null,
+  }));
+
   if (!orgId) {
     return {
-      id: user.id,
+      id   : user.id,
       email: user.email,
       organizacion: null,
-      rol: 'superadmin_global',
-      permisos: ['*']
+      rol  : 'superadmin_global',
+      permisos: ['*'],
+      organizations,
     };
   }
 
-  const membership = await OrganizacionUsuario.findOne({
-    where: { usuario_id: userId, organizacion_id: orgId, estado: 'activo' },
-    include: [
-      { model: Rol, as: 'rol', include: [{ model: Permiso, as: 'permisos' }] },
-      { model: Organizacion, as: 'organizacion' }
-    ]
-  });
-
-  if (!membership) {
-    throw new ApiError(403, 'No perteneces a esta organización', 'ORG_ACCESS_DENIED');
-  }
+  const membership = all.find(m => m.organizacionId === orgId);
+  if (!membership) throw new ApiError(403, 'No perteneces a esta organización', 'ORG_ACCESS_DENIED');
 
   return {
-    id: user.id,
+    id   : user.id,
     email: user.email,
     organizacion: {
-      id: membership.organizacion_id,
-      nombre: membership.organizacion?.nombre,
+      id     : membership.organizacionId,
+      nombre : membership.organizacion?.nombre,
       dominio: membership.organizacion?.dominio
     },
-    rol: membership.rol?.nombre,
-    permisos: membership.rol?.permisos?.map(p => p.nombre) || []
+    rol     : membership.rol?.nombre || null,
+    permisos: membership.rol?.permisos?.map(p => p.nombre) || [],
+    organizations,
   };
 };
 
@@ -123,7 +140,7 @@ export const registerOrganization = async (req, res, next) => {
     const usuario = await Usuario.findByPk(decoded.userId);
     if (!usuario) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
 
-    const dominioLower = dominio.trim().toLowerCase();
+    const dominioLower = (dominio || '').trim().toLowerCase();
     const existente = await Organizacion.findOne({ where: { dominio: dominioLower } });
     if (existente) throw new ApiError(400, 'El dominio ya está registrado', 'ORG_DOMAIN_DUPLICATE');
 
@@ -137,10 +154,11 @@ export const registerOrganization = async (req, res, next) => {
     });
 
     const rolAdmin = await ensureAdminRoleForOrg(organizacion.id);
+
     await OrganizacionUsuario.create({
-      organizacion_id: organizacion.id,
-      usuario_id: usuario.id,
-      rol_id: rolAdmin.id,
+      organizacionId: organizacion.id,
+      usuarioId: usuario.id,
+      rolId: rolAdmin.id,
       estado: 'activo'
     });
 
@@ -171,15 +189,10 @@ export const joinOrganization = async (req, res, next) => {
 
     // Detecta si viene del flujo pendingToken o de usuario activo
     const usuarioId = req.pendingUser?.id || req.user?.id;
-
-    if (!usuarioId) {
-      throw new ApiError(401, 'Usuario no autenticado', 'AUTH_REQUIRED');
-    }
+    if (!usuarioId) throw new ApiError(401, 'Usuario no autenticado', 'AUTH_REQUIRED');
 
     const usuario = await Usuario.findByPk(usuarioId);
-    if (!usuario) {
-      throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
-    }
+    if (!usuario) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
 
     let org = null;
 
@@ -193,19 +206,15 @@ export const joinOrganization = async (req, res, next) => {
         }
       });
 
-      if (!invite) {
-        throw new ApiError(400, 'Invitación inválida o expirada', 'INVITE_INVALID');
-      }
+      if (!invite) throw new ApiError(400, 'Invitación inválida o expirada', 'INVITE_INVALID');
 
       org = await Organizacion.findByPk(invite.organizacion_id);
-      if (!org) {
-        throw new ApiError(404, 'Organización no encontrada', 'ORG_NOT_FOUND');
-      }
+      if (!org) throw new ApiError(404, 'Organización no encontrada', 'ORG_NOT_FOUND');
 
       await OrganizacionUsuario.create({
-        organizacion_id: org.id,
-        usuario_id: usuario.id,
-        rol_id: invite.rol_id || null,
+        organizacionId: org.id,
+        usuarioId: usuario.id,
+        rolId: invite.rol_id || null,
         estado: 'activo'
       });
 
@@ -215,18 +224,14 @@ export const joinOrganization = async (req, res, next) => {
       // Caso 2: unión directa por orgId o dominio
       org = orgId
         ? await Organizacion.findByPk(orgId)
-        : await Organizacion.findOne({
-            where: { dominio: (dominio || '').toLowerCase() }
-          });
+        : await Organizacion.findOne({ where: { dominio: (dominio || '').toLowerCase() } });
 
-      if (!org) {
-        throw new ApiError(404, 'Organización no encontrada', 'ORG_NOT_FOUND');
-      }
+      if (!org) throw new ApiError(404, 'Organización no encontrada', 'ORG_NOT_FOUND');
 
       await OrganizacionUsuario.create({
-        organizacion_id: org.id,
-        usuario_id: usuario.id,
-        rol_id: null,
+        organizacionId: org.id,
+        usuarioId: usuario.id,
+        rolId: null,
         estado: 'pendiente'
       });
     }
@@ -259,6 +264,17 @@ export const joinOrganization = async (req, res, next) => {
   }
 };
 
+// -------------------- CSRF + Logout --------------------
+export const csrf = async (_req, res) => {
+  res.json({ success: true, csrfToken: 'ok' });
+};
+
+export const logout = async (_req, res) => {
+  clearAuthCookie(res);
+  res.clearCookie('csrf_token', { path: '/', sameSite: 'lax', secure: true });
+  res.json({ success: true });
+};
+
 // -------------------- Login --------------------
 export const login = async (req, res, next) => {
   try {
@@ -271,7 +287,7 @@ export const login = async (req, res, next) => {
     if (!user.activo) throw new ApiError(403, 'La cuenta no está activada', 'ACCOUNT_INACTIVE');
 
     const memberships = await OrganizacionUsuario.findAll({
-      where: { usuario_id: user.id, estado: 'activo' },
+      where: { usuarioId: user.id, estado: 'activo' },
       include: [{ model: Organizacion, as: 'organizacion' }, { model: Rol, as: 'rol' }]
     });
 
@@ -279,14 +295,15 @@ export const login = async (req, res, next) => {
       if (user.rolGlobal === 'superadmin_global') {
         const token = generarJWT(user.id, null, null);
         const payload = await buildUserPayload(user.id, null);
-        return res.json({ success: true, token, user: payload });
+        setAuthCookie(res, token);
+        return res.json({ success: true, user: payload });
       }
       throw new ApiError(403, 'No perteneces a ninguna organización', 'NO_ORG_MEMBERSHIP');
     }
 
     let selected = memberships[0];
     if (orgId) {
-      selected = memberships.find(m => m.organizacion_id === orgId);
+      selected = memberships.find(m => m.organizacionId === orgId);
       if (!selected) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENIED');
     } else if (memberships.length > 1) {
       return res.status(409).json({
@@ -294,29 +311,29 @@ export const login = async (req, res, next) => {
         code: 'MULTIPLE_ORGS',
         message: 'Seleccioná una organización',
         options: memberships.map(m => ({
-          orgId: m.organizacion_id,
+          orgId : m.organizacionId,
           nombre: m.organizacion?.nombre,
-          rol: m.rol?.nombre
+          rol   : m.rol?.nombre
         }))
       });
     }
 
     user.ultimoLogin = new Date();
     await user.save();
-    const token = generarJWT(user.id, selected.organizacion_id, selected.rol_id);
-    const payload = await buildUserPayload(user.id, selected.organizacion_id);
-    res.json({ success: true, token, user: payload });
-  } catch (err) {
-    next(err);
-  }
+
+    const token   = generarJWT(user.id, selected.organizacionId, selected.rolId);
+    const payload = await buildUserPayload(user.id, selected.organizacionId);
+
+    setAuthCookie(res, token);
+    return res.json({ success: true, user: payload });
+  } catch (err) { next(err); }
 };
 
 // -------------------- Login con 2FA --------------------
 export const login2FA = async (req, res, next) => {
   try {
     const { email, token, orgId } = req.body;
-    if (!email || !token)
-      throw new ApiError(400, 'Email y token 2FA requeridos', '2FA_REQUIRED');
+    if (!email || !token) throw new ApiError(400, 'Email y token 2FA requeridos', '2FA_REQUIRED');
 
     const user = await Usuario.scope(null).findOne({ where: { email } });
     if (!user) throw new ApiError(401, 'Credenciales inválidas', 'LOGIN_INVALID');
@@ -334,22 +351,23 @@ export const login2FA = async (req, res, next) => {
     if (!verified) throw new ApiError(401, 'Código 2FA inválido', '2FA_INVALID');
 
     const memberships = await OrganizacionUsuario.findAll({
-      where: { usuario_id: user.id, estado: 'activo' },
+      where: { usuarioId: user.id, estado: 'activo' },
       include: [{ model: Organizacion, as: 'organizacion' }, { model: Rol, as: 'rol' }]
     });
 
     if (!memberships.length) {
       if (user.rolGlobal === 'superadmin_global') {
         const jwtToken = generarJWT(user.id, null, null);
-        const payload = await buildUserPayload(user.id, null);
-        return res.json({ success: true, token: jwtToken, user: payload });
+        const payload  = await buildUserPayload(user.id, null);
+        setAuthCookie(res, jwtToken);
+        return res.json({ success: true, user: payload });
       }
       throw new ApiError(403, 'No perteneces a ninguna organización', 'NO_ORG_MEMBERSHIP');
     }
 
     let selected = memberships[0];
     if (orgId) {
-      selected = memberships.find(m => m.organizacion_id === orgId);
+      selected = memberships.find(m => m.organizacionId === orgId);
       if (!selected) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENIED');
     } else if (memberships.length > 1) {
       return res.status(409).json({
@@ -357,9 +375,9 @@ export const login2FA = async (req, res, next) => {
         code: 'MULTIPLE_ORGS',
         message: 'Seleccioná una organización',
         options: memberships.map(m => ({
-          orgId: m.organizacion_id,
+          orgId : m.organizacionId,
           nombre: m.organizacion?.nombre,
-          rol: m.rol?.nombre
+          rol   : m.rol?.nombre
         }))
       });
     }
@@ -367,102 +385,39 @@ export const login2FA = async (req, res, next) => {
     user.ultimoLogin = new Date();
     await user.save();
 
-    const jwtToken = generarJWT(user.id, selected.organizacion_id, selected.rol_id);
-    const payload = await buildUserPayload(user.id, selected.organizacion_id);
-    res.json({ success: true, token: jwtToken, user: payload });
-  } catch (err) {
-    next(err);
-  }
-};
+    const jwtToken = generarJWT(user.id, selected.organizacionId, selected.rolId);
+    const payload  = await buildUserPayload(user.id, selected.organizacionId);
 
-// -------------------- Setup 2FA --------------------
-export const setup2FA = async (req, res, next) => {
-  try {
-    const user = await Usuario.findByPk(req.user.id);
-    if (!user) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
-
-    const secret = speakeasy.generateSecret({ name: 'FedesCRM 2FA' });
-    user.twoFactorSecret = secret.base32;
-    await user.save();
-
-    const QRCode = await import('qrcode');
-    const qrImage = await QRCode.toDataURL(secret.otpauth_url);
-
-    res.json({ success: true, secret: secret.base32, qrImage });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// -------------------- Verify 2FA --------------------
-export const verify2FA = async (req, res, next) => {
-  try {
-    const { token } = req.body;
-    const user = await Usuario.findByPk(req.user.id);
-    if (!user || !user.twoFactorSecret)
-      throw new ApiError(400, '2FA no configurado', '2FA_NOT_CONFIGURED');
-
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
-      encoding: 'base32',
-      token,
-      window: 1
-    });
-
-    if (!verified) throw new ApiError(401, 'Código inválido', '2FA_INVALID');
-
-    user.twoFactorEnabled = true;
-    await user.save();
-
-    res.json({ success: true, message: '2FA activado correctamente' });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// -------------------- Disable 2FA --------------------
-export const disable2FA = async (req, res, next) => {
-  try {
-    const user = await Usuario.findByPk(req.user.id);
-    if (!user) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
-
-    user.twoFactorEnabled = false;
-    user.twoFactorSecret = null;
-    await user.save();
-
-    res.json({ success: true, message: '2FA desactivado correctamente' });
-  } catch (err) {
-    next(err);
-  }
+    setAuthCookie(res, jwtToken);
+    return res.json({ success: true, user: payload });
+  } catch (err) { next(err); }
 };
 
 // -------------------- Login con Google --------------------
 export const googleLogin = async (req, res, next) => {
   try {
-    const { idToken, orgId } = req.body;
-    if (!idToken) throw new ApiError(400, 'Token de Google requerido', 'GOOGLE_TOKEN_REQUIRED');
+    const { idToken, code, orgId } = req.body;
 
-    const ticket = await googleClient.verifyIdToken({
-      idToken,
-      audience: process.env.googleClientId || process.env.GOOGLE_CLIENT_ID
-    });
+    let idTokenToVerify = idToken || null;
+    if (!idTokenToVerify && code) {
+      const { tokens } = await googleOAuth.getToken({ code });
+      idTokenToVerify = tokens?.id_token || null;
+    }
+    if (!idTokenToVerify) throw new ApiError(400, 'Token de Google requerido', 'GOOGLE_TOKEN_REQUIRED');
+
+    const ticket  = await googleClient.verifyIdToken({ idToken: idTokenToVerify, audience: GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
 
     const googleId = payload.sub;
-    const email = payload.email;
-    const nombre = payload.given_name;
-    const apellido = payload.family_name;
+    const email    = payload.email;
+    const nombre   = payload.given_name || '';
+    const apellido = payload.family_name || '';
 
-    let user = await Usuario.findOne({ where: { oauthId: googleId } });
+    let user = await Usuario.findOne({ where: { oauth_id: googleId } });
 
     if (!user) {
       user = await Usuario.create({
-        nombre,
-        apellido,
-        email,
-        oauthId: googleId,
-        proveedor: 'google',
-        activo: true
+        nombre, apellido, email, oauth_id: googleId, proveedor: 'google', activo: true
       });
       return res.status(200).json({
         success: true,
@@ -473,15 +428,16 @@ export const googleLogin = async (req, res, next) => {
     }
 
     const memberships = await OrganizacionUsuario.findAll({
-      where: { usuario_id: user.id, estado: 'activo' },
+      where: { usuarioId: user.id, estado: 'activo' },
       include: [{ model: Organizacion, as: 'organizacion' }, { model: Rol, as: 'rol' }]
     });
 
     if (!memberships.length) {
       if (user.rolGlobal === 'superadmin_global') {
         const token = generarJWT(user.id, null, null);
-        const data = await buildUserPayload(user.id, null);
-        return res.json({ success: true, token, user: data });
+        const data  = await buildUserPayload(user.id, null);
+        setAuthCookie(res, token);
+        return res.json({ success: true, user: data });
       }
       return res.status(403).json({
         success: false,
@@ -492,30 +448,30 @@ export const googleLogin = async (req, res, next) => {
 
     let selected = memberships[0];
     if (orgId) {
-      selected = memberships.find(m => m.organizacion_id === orgId);
-      if (!selected) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENIED');
+      selected = memberships.find(m => m.organizacionId === orgId);
+      if (!selected) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENEGADO');
     } else if (memberships.length > 1) {
       return res.status(409).json({
         success: false,
         code: 'MULTIPLE_ORGS',
         message: 'Seleccioná una organización',
         options: memberships.map(m => ({
-          orgId: m.organizacion_id,
+          orgId : m.organizacionId,
           nombre: m.organizacion?.nombre,
-          rol: m.rol?.nombre
+          rol   : m.rol?.nombre
         }))
       });
     }
 
-    const token = generarJWT(user.id, selected.organizacion_id, selected.rol_id);
-    const data = await buildUserPayload(user.id, selected.organizacion_id);
-    res.json({ success: true, token, user: data });
-  } catch (err) {
-    next(err);
-  }
+    const token = generarJWT(user.id, selected.organizacionId, selected.rolId);
+    const data  = await buildUserPayload(user.id, selected.organizacionId);
+
+    setAuthCookie(res, token);
+    return res.json({ success: true, user: data });
+  } catch (err) { next(err); }
 };
 
-// -------------------- Forgot Password --------------------
+// -------------------- Forgot / Reset Password --------------------
 export const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -542,7 +498,6 @@ export const forgotPassword = async (req, res, next) => {
   }
 };
 
-// -------------------- Reset Password --------------------
 export const resetPassword = async (req, res, next) => {
   try {
     const { token, newPassword } = req.body;
@@ -618,6 +573,38 @@ export const verifyEmail = async (req, res, next) => {
   }
 };
 
+export const resendVerification = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const user = await Usuario.findOne({ where: { email } });
+    if (!user) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
+    if (user.activo) throw new ApiError(400, 'La cuenta ya está verificada', 'ACCOUNT_ALREADY_VERIFIED');
+
+    await EmailVerificationToken.update(
+      { usado: true },
+      { where: { usuarioId: user.id, usado: false } }
+    );
+
+    const token = crypto.randomUUID();
+    await EmailVerificationToken.create({
+      usuarioId: user.id,
+      token,
+      expiracion: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    });
+
+    await sendTemplate({
+      to: user.email,
+      template: 'verify-email',
+      subject: 'Verificá tu cuenta en FedesCRM',
+      vars: { verifyLink: `${FE_BASE}/verify/${token}` }
+    });
+
+    res.json({ success: true, message: 'Correo de verificación reenviado' });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // -------------------- Switch de organización --------------------
 export const switchOrganization = async (req, res, next) => {
   try {
@@ -628,24 +615,90 @@ export const switchOrganization = async (req, res, next) => {
 
     if (req.user.rol === 'superadmin_global' && !orgId) {
       const token = generarJWT(userId, null, null);
-      const user = await buildUserPayload(userId, null);
-      return res.json({ success: true, token, user });
+      const user  = await buildUserPayload(userId, null);
+      setAuthCookie(res, token);
+      return res.json({ success: true, user });
     }
 
     const membership = await OrganizacionUsuario.findOne({
-      where: { usuario_id: userId, organizacion_id: orgId, estado: 'activo' }
+      where: { usuarioId: userId, organizacionId: orgId, estado: 'activo' }
     });
     if (!membership) throw new ApiError(403, 'No perteneces a esa organización', 'ORG_ACCESS_DENIED');
 
-    const token = generarJWT(userId, orgId, membership.rol_id);
-    const user = await buildUserPayload(userId, orgId);
-    res.json({ success: true, token, user });
+    const token = generarJWT(userId, orgId, membership.rolId);
+    const user  = await buildUserPayload(userId, orgId);
+
+    setAuthCookie(res, token);
+    return res.json({ success: true, user });
+  } catch (err) { next(err); }
+};
+
+// -------------------- Perfil actual --------------------
+export const me = async (req, res, next) => {
+  try {
+    const orgId  = req.user?.orgId ?? null;
+    const payload = await buildUserPayload(req.user.id, orgId);
+    res.json({ success: true, user: payload });
+  } catch (err) { next(err); }
+};
+
+// -------------------- Setup 2FA --------------------
+export const setup2FA = async (req, res, next) => {
+  try {
+    const user = await Usuario.findByPk(req.user.id);
+    if (!user) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
+
+    const secret = speakeasy.generateSecret({ name: 'FedesCRM 2FA' });
+    user.twoFactorSecret = secret.base32;
+    await user.save();
+
+    const QRCode = await import('qrcode');
+    const qrImage = await QRCode.toDataURL(secret.otpauth_url);
+
+    res.json({ success: true, secret: secret.base32, qrImage });
   } catch (err) {
     next(err);
   }
 };
 
-// -------------------- Perfil actual --------------------
-export const me = async (req, res) => {
-  res.json({ success: true, user: req.user });
+// -------------------- Verify 2FA --------------------
+export const verify2FA = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    const user = await Usuario.findByPk(req.user.id);
+    if (!user || !user.twoFactorSecret)
+      throw new ApiError(400, '2FA no configurado', '2FA_NOT_CONFIGURED');
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token,
+      window: 1
+    });
+
+    if (!verified) throw new ApiError(401, 'Código inválido', '2FA_INVALID');
+
+    user.twoFactorEnabled = true;
+    await user.save();
+
+    res.json({ success: true, message: '2FA activado correctamente' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// -------------------- Disable 2FA --------------------
+export const disable2FA = async (req, res, next) => {
+  try {
+    const user = await Usuario.findByPk(req.user.id);
+    if (!user) throw new ApiError(404, 'Usuario no encontrado', 'USER_NOT_FOUND');
+
+    user.twoFactorEnabled = false;
+    user.twoFactorSecret = null;
+    await user.save();
+
+    res.json({ success: true, message: '2FA desactivado correctamente' });
+  } catch (err) {
+    next(err);
+  }
 };

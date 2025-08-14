@@ -1,0 +1,34 @@
+@use './variables' as v;
+
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: v.$white;
+  color: v.$text-color;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: 0.2s ease;
+  text-align: center;
+
+  &:hover:not(:disabled) {
+    border-color: v.$primary-color;
+    color: v.$primary-color;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .google-icon {
+    font-size: 1.1rem;
+    color: v.$primary-color;
+  }
+}

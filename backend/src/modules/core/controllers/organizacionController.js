@@ -1,3 +1,4 @@
+// src/modules/core/controllers/usuarioController.js
 import * as service from '../services/usuarioService.js';
 
 // -------- Contexto por Organización --------
@@ -36,7 +37,7 @@ export const eliminar = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// -------- Contexto Global --------
+// -------- Contexto Global (si lo usás) --------
 export const listarGlobal = async (_req, res, next) => {
   try {
     const data = await service.listarUsuariosGlobal();

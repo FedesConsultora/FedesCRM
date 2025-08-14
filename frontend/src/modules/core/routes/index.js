@@ -1,17 +1,18 @@
-// src/modules/core/routes/index.jsx
 import { Routes, Route } from 'react-router-dom';
 import PrivateRoute from '../../../router/PrivateRoute';
 import PublicRoute from '../../../router/PublicRoute';
+import GuardedRoute from '../../../shared/components/GuardedRoute';
+import { requirePendingToken, requireEmailRegistrado } from '../utils/routeGuards';
 
 // Pages
 import Login from '../pages/Login';
 import DashboardPage from '../pages/Dashboard';
 import RegisterStep1 from '../pages/RegisterStep1';
-import RegisterStep2 from '../pages/RegisterStep2';
 import VerifyEmail from '../pages/VerifyEmail';
 import ForgotPassword from '../pages/ForgotPassword';
 import ResetPassword from '../pages/ResetPassword';
 import VerifyToken from '../pages/VerifyToken';
+import RegisterOrganization from '../pages/RegisterOrganization';
 
 export default function CoreRoutes() {
   return (
@@ -35,29 +36,36 @@ export default function CoreRoutes() {
           </PublicRoute>
         }
       />
+
       <Route
         path="/register/organization"
         element={
           <PublicRoute>
-            <RegisterStep2 />
+            <GuardedRoute guard={requirePendingToken} redirectTo="/register">
+              <RegisterOrganization />
+            </GuardedRoute>
           </PublicRoute>
         }
       />
+
       <Route
         path="/verify-email"
         element={
           <PublicRoute>
-            <VerifyEmail />
+            <GuardedRoute guard={requireEmailRegistrado} redirectTo="/login">
+              <VerifyEmail />
+            </GuardedRoute>
           </PublicRoute>
         }
       />
+
       <Route
         path="/verify/:token"
         element={
           <PublicRoute>
             <VerifyToken />
           </PublicRoute>
-          }
+        }
       />
 
       <Route

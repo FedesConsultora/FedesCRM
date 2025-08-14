@@ -8,7 +8,6 @@ export const loginValidator = [
   body('orgId').optional().isUUID().withMessage('orgId inválido'),
   validateRequest
 ];
-
 export const registerValidator = [
   body('nombre').notEmpty(),
   body('apellido').notEmpty(),
@@ -26,8 +25,23 @@ export const registerOrganizationValidator = [
   validateRequest
 ];
 
+// Para flujo con pendingToken (registro)
+export const joinOrganizationWithPendingValidator = [
+  body('pendingToken').notEmpty().withMessage('pendingToken requerido'),
+  body().custom((val) => {
+    if (!val.inviteToken && !val.orgId && !val.dominio) {
+      throw new Error('Debes indicar inviteToken, orgId o dominio');
+    }
+    return true;
+  }),
+  body('inviteToken').optional().isString(),
+  body('orgId').optional().isUUID(),
+  body('dominio').optional().isString(),
+  validateRequest
+];
+
+// Para flujo con JWT (usuario ya autenticado)
 export const joinOrganizationValidator = [
-  body('pendingToken').notEmpty(),
   body().custom((val) => {
     if (!val.inviteToken && !val.orgId && !val.dominio) {
       throw new Error('Debes indicar inviteToken, orgId o dominio');
@@ -58,5 +72,10 @@ export const resetPasswordValidator = [
 
 export const verifyEmailValidator = [
   body('token').notEmpty(),
+  validateRequest
+];
+
+export const resendVerificationValidator = [
+  body('email').isEmail().withMessage('Email inválido'),
   validateRequest
 ];

@@ -2,11 +2,19 @@
 @use './reset';
 @use './globals';
 @use './dashboard';
-@use './auth';
 @use './privateLayout';
 @use './publicLayout';
 @use './logo';
 @use './loading';
+@use './auth_base';
+@use './auth_card';
+@use './auth_org';
+@use './auth_modals';
+@use './googleButton';
+@use './toast';
+@use './sidebar';
+@use './header';
+
 
 
 main{

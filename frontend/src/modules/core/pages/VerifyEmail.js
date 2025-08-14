@@ -1,9 +1,10 @@
-import { useNavigate } from 'react-router-dom';
 import Logo from '../../../shared/components/Logo';
+import useVerifyEmail from '../hooks/useVerifyEmail';
 
 export default function VerifyEmail() {
-  const email = localStorage.getItem('emailRegistrado') || '';
-  const navigate = useNavigate();
+  const { email, loading, handleResend } = useVerifyEmail();
+
+  if (!email) return null; // Guard extra, igual ya lo hace el hook
 
   return (
     <div className="register-container">
@@ -12,9 +13,22 @@ export default function VerifyEmail() {
         <h2>Verificá tu correo</h2>
         <p>
           Te enviamos un correo de verificación a <strong>{email}</strong>.
-          Revisa tu bandeja de entrada y seguí las instrucciones para activar tu cuenta.
+          Revisá tu bandeja de entrada y seguí las instrucciones.
         </p>
-        <button onClick={() => navigate('/login')}>Volver al Login</button>
+
+        <button
+          type="button"
+          onClick={handleResend}
+          disabled={loading}
+          className="btn-primary"
+          
+        >
+          {loading ? 'Reenviando…' : 'Reenviar verificación'}
+        </button>
+
+        <p>
+          Si no lo encontrás, revisá la carpeta de spam o promociones.
+        </p>
       </div>
     </div>
   );

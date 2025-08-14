@@ -2,9 +2,8 @@ import ApiError from '../../../utils/ApiError.js';
 import { Usuario, Rol, Organizacion, OrganizacionUsuario } from '../models/index.js';
 import { sendTemplate } from '../../../services/email/index.js';
 
-
 export const listarMiembros = async (orgId, estado = null) => {
-  const where = { organizacion_id: orgId };
+  const where = { organizacionId: orgId };
   if (estado) where.estado = estado;
 
   return OrganizacionUsuario.findAll({
@@ -21,7 +20,7 @@ export const aprobarSolicitud = async ({ orgId, membershipId, rolId }) => {
   const mem = await OrganizacionUsuario.findByPk(membershipId, {
     include: [{ model: Usuario, as: 'usuario' }, { model: Organizacion, as: 'organizacion' }]
   });
-  if (!mem || mem.organizacion_id !== orgId) {
+  if (!mem || mem.organizacionId !== orgId) {
     throw new ApiError(404, 'Solicitud no encontrada', 'MEMBERSHIP_NOT_FOUND');
   }
   if (mem.estado !== 'pendiente') {
@@ -29,7 +28,7 @@ export const aprobarSolicitud = async ({ orgId, membershipId, rolId }) => {
   }
 
   mem.estado = 'activo';
-  mem.rol_id = rolId ?? mem.rol_id;
+  mem.rolId = rolId ?? mem.rolId;
   await mem.save();
 
   await sendTemplate({
@@ -46,7 +45,7 @@ export const rechazarSolicitud = async ({ orgId, membershipId }) => {
   const mem = await OrganizacionUsuario.findByPk(membershipId, {
     include: [{ model: Usuario, as: 'usuario' }, { model: Organizacion, as: 'organizacion' }]
   });
-  if (!mem || mem.organizacion_id !== orgId) {
+  if (!mem || mem.organizacionId !== orgId) {
     throw new ApiError(404, 'Solicitud no encontrada', 'MEMBERSHIP_NOT_FOUND');
   }
   if (mem.estado !== 'pendiente') {
@@ -70,18 +69,18 @@ export const cambiarRol = async ({ orgId, membershipId, rolId }) => {
   const mem = await OrganizacionUsuario.findByPk(membershipId, {
     include: [{ model: Usuario, as: 'usuario' }]
   });
-  if (!mem || mem.organizacion_id !== orgId) {
+  if (!mem || mem.organizacionId !== orgId) {
     throw new ApiError(404, 'Membresía no encontrada', 'MEMBERSHIP_NOT_FOUND');
   }
   if (mem.estado !== 'activo') {
     throw new ApiError(409, 'Solo se puede cambiar el rol a miembros activos', 'MEMBERSHIP_NOT_ACTIVE');
   }
   const rol = await Rol.findByPk(rolId);
-  if (!rol || rol.organizacion_id !== orgId) {
+  if (!rol || rol.organizacionId !== orgId) {
     throw new ApiError(404, 'Rol inválido para esta organización', 'ROLE_NOT_FOUND');
   }
 
-  mem.rol_id = rolId;
+  mem.rolId = rolId;
   await mem.save();
   return mem;
 };
@@ -91,30 +90,28 @@ export const solicitarUnion = async ({ orgId, userId }) => {
   if (!org) throw new ApiError(404, 'Organización no encontrada', 'ORG_NOT_FOUND');
 
   const existente = await OrganizacionUsuario.findOne({
-    where: { organizacion_id: orgId, usuario_id: userId }
+    where: { organizacionId: orgId, usuarioId: userId }
   });
 
   if (existente) {
-    if (existente.estado === 'activo') throw new ApiError(409, 'Ya sos miembro activo', 'ALREADY_MEMBER');
+    if (existente.estado === 'activo')   throw new ApiError(409, 'Ya sos miembro activo', 'ALREADY_MEMBER');
     if (existente.estado === 'pendiente') throw new ApiError(409, 'Solicitud ya pendiente', 'REQUEST_ALREADY_PENDING');
   }
 
   const nuevaSolicitud = await OrganizacionUsuario.create({
-    organizacion_id: orgId,
-    usuario_id: userId,
+    organizacionId: orgId,
+    usuarioId: userId,
     estado: 'pendiente',
-    rol_id: null
+    rolId: null
   });
 
-  // Buscar admins de la organización
   const admins = await OrganizacionUsuario.findAll({
-    where: { organizacion_id: orgId, estado: 'activo' },
+    where: { organizacionId: orgId, estado: 'activo' },
     include: [{ model: Rol, as: 'rol', where: { nombre: 'admin' } }, { model: Usuario, as: 'usuario' }]
   });
 
   const solicitante = await Usuario.findByPk(userId);
 
-  // Enviar notificación a todos los admins
   await Promise.all(
     admins.map(admin =>
       sendTemplate({

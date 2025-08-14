@@ -7,40 +7,47 @@ import {
   loginValidator,
   registerValidator,
   registerOrganizationValidator,
+  joinOrganizationWithPendingValidator,
   joinOrganizationValidator,
   switchOrgValidator,
   forgotPasswordValidator,
   resetPasswordValidator,
-  verifyEmailValidator
+  verifyEmailValidator,
+  resendVerificationValidator
 } from '../validators/authValidator.js';
+import { loginLimiter, oauthLimiter } from '../../../middlewares/rateLimiters.js';
 
 const router = Router();
 
-// Step 1 y Step 2
+router.get('/csrf', controller.csrf);
+
+// Step 1 + Step 2
 router.post('/register', registerValidator, controller.register);
 router.post('/register-org', pendingTokenMiddleware, registerOrganizationValidator, controller.registerOrganization);
 
 // Join org con pendingToken (registro)
-router.post('/join-org', pendingTokenMiddleware, joinOrganizationValidator, controller.joinOrganization);
+router.post('/join-org', pendingTokenMiddleware, joinOrganizationWithPendingValidator, controller.joinOrganization);
 
 // Join org con JWT (usuario activo)
 router.post('/join-org-auth', authMiddleware, joinOrganizationValidator, controller.joinOrganization);
 
-// Login y cambio de org
-router.post('/login', loginValidator, controller.login);
+// Login / cambio org / logout
+router.post('/login', loginLimiter, loginValidator, controller.login);
 router.post('/switch-org', authMiddleware, switchOrgValidator, controller.switchOrganization);
+router.post('/logout', controller.logout);
 
 // 2FA
-router.post('/2fa', controller.login2FA);
+router.post('/2fa', loginLimiter, controller.login2FA);
 router.post('/2fa/setup', authMiddleware, controller.setup2FA);
 router.post('/2fa/verify', authMiddleware, controller.verify2FA);
 router.post('/2fa/disable', authMiddleware, controller.disable2FA);
 
 // Google
-router.post('/google', controller.googleLogin);
+router.post('/google', oauthLimiter, controller.googleLogin);
 
-// Verificación email y recuperación
+// Verificación email / recovery
 router.post('/verify-email', verifyEmailValidator, controller.verifyEmail);
+router.post('/resend-verification', resendVerificationValidator, controller.resendVerification);
 router.post('/forgot-password', forgotPasswordValidator, controller.forgotPassword);
 router.post('/reset-password', resetPasswordValidator, controller.resetPassword);
 

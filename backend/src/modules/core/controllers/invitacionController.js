@@ -25,7 +25,9 @@ export const revocar = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// Aceptar invitación (usuario autenticado)
+// alias por compatibilidad (si alguna ruta vieja la invoca)
+export const eliminar = revocar;
+
 export const aceptar = async (req, res, next) => {
   try {
     const { token } = req.body;

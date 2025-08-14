@@ -1,30 +1,40 @@
-// src/modules/core/routes/index.js
 import { Router } from 'express';
 
+import authRoutes from './authRoutes.js';
+import auditLogRoutes from './auditLogRoutes.js';
 import organizacionRoutes from './organizacionRoutes.js';
+
+// Admin global (empiezan con /admin/...)
 import usuarioRoutes from './usuarioRoutes.js';
 import rolRoutes from './rolRoutes.js';
 import permisoRoutes from './permisoRoutes.js';
-import auditLogRoutes from './auditLogRoutes.js';
-import authRoutes from './authRoutes.js';
+
+// Scoped por organización
+import orgsRoutes from './orgsRoutes.js';
+
+// Invitaciones (endpoint global para aceptar)
 import invitacionRoutes from './invitacionRoutes.js';
-import membresiaRoutes from './membresiaRoutes.js';
 
 const router = Router();
 
-// Health check del módulo
-router.get('/', (req, res) => {
+router.get('/', (_req, res) => {
   res.json({ module: 'core', status: 'ok' });
 });
 
-// Montaje de subrutas
-router.use('/organizaciones', organizacionRoutes);
-router.use('/usuarios', usuarioRoutes);
-router.use('/roles', rolRoutes);
-router.use('/permisos', permisoRoutes);
-router.use('/audit-logs', auditLogRoutes);
+/* Global / auth */
 router.use('/auth', authRoutes);
-router.use('/invitaciones', invitacionRoutes);
-router.use('/membresias', membresiaRoutes);
+router.use('/audit-logs', auditLogRoutes);
+router.use('/organizaciones', organizacionRoutes);
+
+/* Admin global: estos archivos definen rutas /admin/... internamente */
+router.use('/', usuarioRoutes);
+router.use('/', rolRoutes);
+router.use('/', permisoRoutes);
+
+/* Invitación (aceptar) – endpoint global */
+router.use('/', invitacionRoutes);
+
+/* Scoped por organización */
+router.use('/orgs/:orgId', orgsRoutes);
 
 export default router;

@@ -1,79 +1,22 @@
 @use './variables' as v;
 
+/* Grid general con variable para el ancho del sidebar */
 .private-layout {
-  display: flex;
+  --sidebar-w: 260px;
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  background: v.$bg-color;
+}
 
-  .sidebar {
-    width: 240px;
-    background-color: v.$primary-color;
-    color: v.$white;
-    display: flex;
-    flex-direction: column;
-    padding: 1.5rem;
+.main-area {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
 
-    .sidebar-logo {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-bottom: 2rem;
-
-      img {
-        width: 50px;
-        height: 50px;
-        margin-bottom: 0.5rem;
-      }
-
-      h2 {
-        font-size: 1.3rem;
-      }
-    }
-
-    nav ul li {
-      margin: 1rem 0;
-
-      a {
-        color: v.$white;
-        font-weight: 500;
-
-        &:hover {
-          text-decoration: underline;
-        }
-      }
-    }
-  }
-
-  .main-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background: v.$bg-color;
-
-    .header {
-      background: v.$white;
-      padding: 1rem 2rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid #eee;
-
-      .header-left h1 {
-        font-size: 1.4rem;
-      }
-    }
-
-    main {
-      flex: 1;
-      padding: 2rem;
-    }
-
-    .footer {
-      background: v.$footer-bg;
-      color: v.$footer-text;
-      text-align: center;
-      padding: 1rem;
-      font-size: 0.85rem;
-      border-top: 1px solid #eee;
-    }
-  }
+.app-main   { padding: clamp(1rem, 2vw, 2rem); }
+.app-footer {
+  background: v.$footer-bg; color: v.$footer-text;
+  border-top: 1px solid rgba(0,0,0,.06);
+  padding: .8rem 1rem; text-align: center;
 }
